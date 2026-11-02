@@ -11,7 +11,7 @@
 
 ## 它解决什么问题 / What it solves
 
-写长篇小说最累的不是打字，而是**大脑里的那根剧情线**——伏笔下章忘了收、人物说走样（OOC）、剧情失控、满屏 AI 腔。
+写长篇小说最累的不是打字，而是**剧情线**——伏笔下章忘了收、人物OOC、剧情失控、满屏 AI 腔。
 Writing a long novel is hard not because of typing, but because of everything your brain has to track —
 unfired Chekhov guns, characters going OOC, plots spiraling out of control, and AI-cliché prose.
 
