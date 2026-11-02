@@ -1,85 +1,101 @@
-# 星火笔 · AI 小说写作室
+# 星火笔 XinghuoPen ✒️ AI 小说写作室 · AI Novel Writing Studio
 
-**首版开源发布：PC v1.76 / 安卓 v1.48**（2026-11-02）
-
-星火笔是一款基于「主AI决断 + 角色推理 + 正文写作 + 审查」自推理管线的多 Agent 小说写作软件：
-你想当导演，AI 分工当编剧、演员和写手。数据完全本地化：项目、设定、角色卡、伏笔台账均存在
-本机/App 私有目录，不经过任何云端账号。
+> **中文：** 你想当导演，AI 分工当编剧、演员和写手。
+> **English:** You are the director; AI plays the screenwriters, actors, and writers.
+>
+> 「主AI决断 + 角色推理 + 正文写作 + 审查验收」全自动自推理管线 / A multi-agent AI novel-writing pipeline:
+> **Main-AI decides → Character-AI reasons → Writer-AI writes → Reviewer-AI verifies**.
+> 电脑端 + 安卓端双端开源，数据完全本地化。 / Open source on both Windows (portable) and Android; all data stays local.
 
 ---
 
-## 发布包内容（本目录 5 件）
+## 它解决什么问题 / What it solves
 
-| 文件 | 说明 |
+写长篇小说最累的不是打字，而是**大脑里的那根剧情线**——伏笔下章忘了收、人物说走样（OOC）、剧情失控、满屏 AI 腔。
+Writing a long novel is hard not because of typing, but because of everything your brain has to track —
+unfired Chekhov guns, characters going OOC, plots spiraling out of control, and AI-cliché prose.
+
+星火笔把这些拆给**分工明确的 AI 代理**，你当导演只管改：
+XinghuoPen splits it into role-specialized AI agents — you just direct:
+
+| 代理 Agent | 职责 Role |
 |---|---|
-| `星火笔-源码-v1.77.zip` | PC + 安卓完整源码树（不含运行环境 env/数据/构建产物/签名密钥） |
-| `星火笔-v1.77-电脑端-无项目痕迹.zip` | 电脑端**免安装可运行版**（含便携 Python 环境），已剔除全部个人数据 |
-| `星火笔-v1.49-安卓-无项目痕迹.apk` | 安卓正式签名安装包（可直接安装，数据运行时生成在 App 私有目录） |
-| `星火笔-v1.49-安卓-无项目痕迹-工程.zip` | 安卓工程源码（可自行构建 APK） |
-| `README.md` | 本说明 |
+| 🧠 主AI / Main AI | 剧情节奏与世界观一致性 / pacing & world consistency |
+| 🎭 角色AI / Character AI | 替每个角色独立推理"TA 此刻会怎么想怎么做" / reasons for each character |
+| ✍️ 正文AI / Writer AI | 把推理结果写成文章 / turns reasoning into prose |
+| 🔍 审查AI / Reviewer AI | 人设/逻辑/文风/禁词验收 / verifies character-logic, style, banned words |
 
-> **无项目痕迹说明**：发布包不含任何用户数据——无 API Key/配置、无项目与章节内容、
-> 无拆书库/文风预设等个人产出；安卓 APK 自用签名与工程版签名材料均未随包发布
-> （工程版构建时请自行生成 keystore 或用 Android Studio 调试签名）。
+---
 
-## 功能一览
+## ✨ 特色功能 / Features
 
-- **写作**：主AI决断 → 角色推理 → 正文写作 → 审查验收；全自动连写；剧情点事前确认；
-  写后校对；去AI味（一键洗稿 / 自动去AI味工作流）。
-- **码字工作台**：AI 续写、段落工具（润色/扩写/缩写/去AI味）、语音码字、草稿箱、
-  全文搜索、写作统计、章节交换。
-- **角色**：角色卡 + 主AI专属信息库（防剧透）；AI 建档/批量建档/自动建档；
-  酒馆 chara_card_v2 卡互换；一键核心角色团。
-- **项目**：书架多开，设定三栏 + 设定锚点；✨一键成书（支持 AI 自动判断章节数）；
-  📥小说导入成项目（未完成小说还原，断点续传）；导出/导入项目 zip。
-- **AI 对话**：多话题聊天，读项目设定（不含正文）/ 联网搜索开关，消息编辑/重生成/继续/删除，
-  思考过程折叠展示，导出 Markdown。
-- **文风校对工坊**：A 提取 → B 生成 → C 评分（TF-IDF + LLM）→ D 优化 多轮迭代；
-  内置「文风提取」「剧情设计提取」两套正式版预设；配套泛化提示词模板（去题材/去时代/防照抄）。
-- **拆书工坊**：长篇小说拆成设计细纲（≤5 万字，学技法不抄情节），断点续传，风格库应用。
-- **故事档案**：时间线、伏笔台账、管理笔记、知识库、章节管理、txt/epub 导出。
-- **情景规则卡**：全局卡库，主AI每章按情境自动选卡注入并给出理由。
-- **界面**：🌸樱粉软萌 / 🌿薄荷奶油 / 🌙二次元夜 三套配色运行时切换（设置页），
-  Ctrl+滚轮整体缩放（PC）；安卓横屏自动切换 PC 版布局。
+| 功能 Feature | 说明 Description |
+|---|---|
+| 🧠 自推理管线 / Self-reasoning pipeline | 主AI决断→角色推理→正文写作→审查验收，自动或半自动 / decide → reason → write → verify |
+| ⚡ 全自动连写 / Full-auto writing | 审过一章自动写下一章，停止立即生效 / one chapter done, next starts; stop takes effect at once |
+| ✍️ 一键成书 / One-click novel | 一句话想法→自动起名/立设定/建角色→开写；支持 AI 自动判断章节数 / a single sentence of idea → auto title/settings/characters → start; **AI-estimated chapter count** |
+| 📥 小说导入成项目 / Import txt as project | 已有 txt（未完结的尤其合适）完整还原：拆书→建卡→入库→续写，断点续传 / rebuild an unfinished novel into a writable project, resume-ready |
+| 🪄 去AI味·写后校对 / De-AI-ify & proofread | 一键清 AI 腔；正文完稿后按文风规则先校一遍 / clean clichés; proofread before review |
+| 🎨 文风校对工坊 / Style workshop | A提取→B生成→C评分→D优化 多轮迭代，向参考原文靠齐 / extract→generate→score→optimize, iteratively |
+| 📚 拆书工坊 / Book-breaking workshop | 几千章长篇小说拆成设计细纲（≤5万字），学技法不抄情节 / break novels into design outlines — techniques, not plots |
+| 👥 角色体系 / Character system | 角色卡 + 主AI专属信息库（防剧透）；批量建档、酒馆卡互换 / cards + Main-AI-only KB (anti-spoiler); batch & SillyTavern interchange |
+| 💬 AI 对话 / AI chat | 多话题；读项目设定/联网搜索开关；消息可编辑/重生成/续写/导出 / multi-topic; project-context & web-search toggles; message editing |
+| 📖 故事档案 / Story archives | 时间线、伏笔台账、管理笔记、知识库——越长越不乱 / timeline, foreshadowing, notes, KB |
+| 🎴 情景规则卡 / Scene rule cards | 高频场景写成"写法圣经"，主AI每章自动选卡注入 / per-scene style bibles auto-injected |
+| 🌸🌿🌙 三套主题 / 3 themes | 樱粉/薄荷/二次元夜，运行时切换，只换皮肤不改功能 / switchable themes, colors only |
 
-## 快速开始（电脑端）
+---
 
-解压 `星火笔-v1.77-电脑端-无项目痕迹.zip` → 双击 `星火笔/start.bat`；
-首次使用到「设置」页填入任意的 OpenAI 兼容 API 地址/Key/模型（支持本地 LM Studio/llama.cpp
-网关、DeepSeek 等云服务）即可开始写作。
+## 🚀 快速开始 / Quick Start
 
-## 快速开始（安卓端）
+**Windows（免安装 / portable）**
+1. 下载 `XinghuoPen-PC-v1.77-Portable.zip` 并解压 / download & extract;
+2. 双击 `start.bat`（无黑窗直接出 UI）/ double-click `start.bat`;
+3. 「设置」填入任意 OpenAI 兼容 API（DeepSeek/Kimi/通义/本地 LM Studio/llama.cpp）/ add any OpenAI-compatible API in Settings;
+4. 「项目」→ 新建 / 一键成书，开始写 / create a project or one-click novel.
 
-直接安装 `星火笔-v1.49-安卓-无项目痕迹.apk`（要求 Android 7.0+）；安装后打开 App，
-界面即本地 WebView，无需网络（联网搜索功能除外）。
+**Android**
+安装 `XinghuoPen-Android-v1.49.apk`（Android 7.0+），数据仅存本机；🌐 联网搜索需网络，其余离线可用。
+Install the APK; data stays on-device; only web-search needs network.
 
-## 从源码构建
+---
 
-### 电脑端
+## 🏗️ 从源码构建 / Build from source
+
 ```bash
+# PC
 cd 星火笔
-pip install -r requirements.txt          # 或使用便携 env（软件自带的可运行环境）
-python src/main.py                        # 或双击 start.bat
-```
+pip install -r requirements.txt
+python src/main.py            # 或双击 start.bat / or double-click start.bat
 
-### 安卓端（Android Studio / Gradle）
-```bash
+# Android (Android Studio / Gradle)
 cd 星火笔-android
-# 1) 生成自己的签名（或改用 debug 构建）：
-#    keytool -genkeypair -alias release -keyalg RSA -validity 3650 -keystore app/release.keystore
-# 2) 把签名信息写入 app/keystore.properties（storeFile/storePassword/keyAlias/keyPassword）
-# 3) 用 Android Studio 打开工程直接 Build > Generate Signed APK，
-#    或命令行 ./gradlew assembleRelease（需 Android SDK；JAVA_HOME 指向 JDK 17）
+# 自建 keystore 后 ./gradlew assembleRelease   / generate your own keystore first
+# Chaquopy 17 预编译 Python（无需 NDK）minSdk 24 / targetSdk 34
 ```
-技术要求：Chaquopy 17（Python 3.10 预编译，无需 NDK）、minSdk 24 / targetSdk 34。
 
-## 版本记录
+## 🔒 数据与隐私 / Data & Privacy
 
-- **v1.77 / v1.49**（当前版本）：教程页全盘更新（PC 9 分页 / 安卓 8 分页，覆盖全部功能；
-  内置两套正式版文风/剧情提取预设与泛化提示词模板）；文风校对预设库内置正式版
-  双端可开箱即用；产出当前首版源码包与无痕迹双端发布包。
+项目、章节、角色卡、伏笔台账、拆书文档、预设**全部存本机/App 私有目录**，API Key 只存本地；本仓库发布包均为**无痕迹版本**（无用户数据/项目/API Key/签名密钥）。
+All data stays local; release packages here are **trace-free** — no user data, projects, API keys, or signing keys.
 
-## 许可与免责
+---
 
-本项目为个人开发作品，源码开源仅供**学习交流**。使用本项目产出的小说内容版权归创作者本人所有；
-默认不附带任何担保。仓库许可证由发布者决定（本发布包未内置 LICENSE 文件）。
+## 📌 开发者注 / A Note from the Developer
+
+本项目开发者是**中国人**——源码、注释、界面以中文为主。
+The developer of this project is **Chinese** — source code, comments and UI are primarily in Chinese.
+
+如果你需要英文版本，推荐**自行通过 vibe coding（AI 辅助改代码）修改**；
+本项目的任何功能都可以自由修改、改进、扩展。如果你愿意，也欢迎把改好的版本分享回来。
+If you need an English version, it is recommended that you **modify it yourself through vibe coding**
+(any AI-assisted editing tool). The project is fully open source — you are welcome to change,
+improve, or extend **any feature**. Contributions back are appreciated.
+
+---
+
+## ⚖️ 许可与免责 / License & Disclaimer
+
+个人开发作品，开源仅供**学习交流**；产出的小说版权归创作者本人；默认不附带担保，许可证由发布者决定。
+A personal project, open-sourced for **learning and communication**; produced novels belong to their creators;
+no warranty implied; the repository license is decided by the publisher.
