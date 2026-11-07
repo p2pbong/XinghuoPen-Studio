@@ -1,5 +1,0 @@
-PySide6>=6.6
-requests>=2.31
-# v0.49 语音码字：SpeechRecognition + PyAudio（Windows 有官方 wheel）
-SpeechRecognition>=3.10
-PyAudio>=0.2.14
