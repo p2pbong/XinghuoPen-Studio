@@ -59,7 +59,7 @@ def _nearby_context(store, chapter, n):
 
 
 def _main_nearby_n():
-    """主AI判断（出场决断/综合校验/审查）可读前几章正文数（v1.60，与 PC v1.86 同源）。
+    """主AI判断（出场决断/综合校验/审查）可读前几章正文数（v1.86 配置 main_recent_chapters，0=不看）。
 
     注意：0 是合法值（关闭），不能用 `get(...) or n` 兜底（0 会被 falsy 吞掉）。
     """
@@ -73,8 +73,8 @@ def _main_nearby_n():
 
 
 def _main_prev_context(store, chapter_no, n):
-    """主AI判断用·前 N 章回顾（v1.60，与 PC v1.86 同源）：最近一章给完整正文（结尾钩子/
-    正文AI写下的关键细节是本章必须承接的），更早的章给「梗概+结尾约800字」省 token。
+    """主AI判断用·前 N 章回顾（v1.86）：最近一章给完整正文（结尾钩子/正文AI写下的
+    关键细节是本章必须承接的），更早的章给「梗概+结尾约800字」省 token。
     返回空串表示无需注入。"""
     try:
         n = int(n or 0)
@@ -121,7 +121,7 @@ def decide_characters(project, store, chapter_no, vol_no, vol_rank, user_directi
         user = user + "\n【你的临场指示】%s" % user_directive
     if extra_context:
         user = user + "\n【补充的角色档案（你点名召回的名册角色，读完后再决断）】\n%s" % extra_context
-    # v1.60 主AI可读前 N 章：决断前先回顾上一章结尾/细节，避免丢钩子与状态
+    # v1.86 主AI可读前 N 章：决断前先回顾上一章结尾/细节，避免丢钩子与状态
     _prev = _main_prev_context(store, chapter_no, _main_nearby_n())
     if _prev:
         user = user + _prev
@@ -148,7 +148,7 @@ def consolidate(project, store, chapter_no, scene_focus, inferences,
                                     kb_prompt=kb_prompt)
     if extra_context:
         user = user + "\n【补充上下文（主AI回顾章节/联网搜索结果）】\n%s" % extra_context
-    # v1.60 主AI可读前 N 章：校验主线前先看上一章结尾/细节，防止设定与状态脱节
+    # v1.86 主AI可读前 N 章：校验主线前先看上一章结尾/细节，防止设定与状态脱节
     _prev = _main_prev_context(store, chapter_no, _main_nearby_n())
     if _prev:
         user = user + _prev
@@ -197,7 +197,7 @@ def write_chapter(project, store, chapter_no, scene_focus, direction, inferences
 def review_chapter(project, store, chapter, target_desc, beats=None):
     sys, user = prompts.review_chapter(project, store, chapter, target_desc,
                                        beats=beats)
-    # v1.60 主AI可读前 N 章：审查时对照上一章结尾/细节，报前后衔接冲突
+    # v1.86 主AI可读前 N 章：审查时对照上一章结尾/细节，报前后衔接冲突
     _prev = _main_prev_context(store, chapter.index, _main_nearby_n())
     if _prev:
         user = user + _prev
@@ -234,13 +234,21 @@ def update_world(project, store, chapter):
         if f.status == "open":
             mark = prompts._overdue_mark(f, project.written_chapters())
             open_ids.append(f.id + ("　" + mark if mark else ""))
-    sys, user = prompts.update_after_chapter(project, store, chapter, open_ids)
+    # v1.101 本章主AI安排的伏笔指令文本（正文反扫核对用：正文AI/作者加戏新埋的钩子要登记回来）
+    planned = []
+    cons = (chapter.reasoning or {}).get("consolidation", {}) or {}
+    for f in cons.get("foreshadows", []) or []:
+        if isinstance(f, dict) and f.get("f_type") == "plant" \
+                and str(f.get("text", "") or "").strip():
+            planned.append(str(f["text"]).strip())
+    sys, user = prompts.update_after_chapter(project, store, chapter, open_ids,
+                                             planned_plants=planned)
     data = llm.chat_json(sys, user, tag="update_world", role="decide")
     return data if isinstance(data, dict) else {}
 
 
 def volume_closing(project, store, vol):
-    """卷末总结与承接下一卷。返回 {"summary":..., "next":...}（与 PC v1.96 同源，结构化）。"""
+    """卷末总结与承接下一卷。返回 {"summary":..., "next":...}（v1.96 结构化，便于后续处理）。"""
     sys, user = prompts.volume_closing(project, store, vol)
     try:
         data = llm.chat_json(sys, user, tag="volume_closing", role="decide")
@@ -264,6 +272,20 @@ def plan_story_ai(opening, notes, constraint="", targets=("story", "world", "rul
     """
     sys, user = prompts.plan_story_ai(opening, notes, constraint, targets)
     data = llm.chat_json(sys, user, tag="plan_story", role="decide")
+    if not isinstance(data, dict):
+        data = {}
+    return data
+
+
+def revise_story(project, store, targets, user_req, current, constraint=""):
+    """v1.98 故事设定页「AI 辅助·按我的要求修改」：在现有三栏（current dict）基础上，
+    按用户要求修改剧情/世界观/特殊规则，输出完整修订版 dict（仅含勾选栏）。
+
+    直接受主AI全局提示词（story_main_prompt）+ 拆书风格参考影响（revise_story_ai 用
+    main_system(project) 注入）；结果**不落盘**，由 UI 展示供用户截取替换。
+    """
+    sys, user = prompts.revise_story_ai(project, store, targets, user_req, current, constraint)
+    data = llm.chat_json(sys, user, tag="revise_story", role="decide")
     if not isinstance(data, dict):
         data = {}
     return data
@@ -314,7 +336,10 @@ def adapt_project_scene_cards(project, cards):
 def plan_title(idea):
     """一键成书（v0.54）：AI 为这个故事起一个书名。
 
-    返回书名（去掉引号/多余空白）；失败返回空串，由调用方回退到「未命名小说」。
+    返回书名（去掉引号/多余空白）；没起成返回空串，由调用方生成临时名并提示。
+    v1.97 修复「AI 新书」谜案：LLM 失败不再在此处静默吞掉——直接上抛给调用方
+    打印真实原因；另外模型常把书名连同解释一起输出（超过 12 字被判空），
+    这里先尝试从《》或首个片段里提取书名，再不行才判空。
     """
     idea = (idea or "").strip()
     sys = (
@@ -323,16 +348,34 @@ def plan_title(idea):
         "套路后缀硬凑三字（除非自然）。只输出书名本身，不要引号、不要解释。"
     )
     user = "【小说想法】%s" % (idea or "（未提供，请起一个通用但出彩的爽文书名）")
-    try:
-        # v0.76：不再限 40 token——推理模型思考会先吃预算，限 40 必然空正文 → 书名
-        # 永远回退「AI 新书」；不限制让模型自己停（提示词已要求只输出书名）
-        title = llm.chat_text(sys, user, tag="plan_title", role="decide")
-        title = (title or "").strip().strip('"\'“”《》').strip()
-        if title and len(title) <= 12:
-            return title
-    except llm.LLMError:
-        pass
+    # v0.76：不再限 40 token——推理模型思考会先吃预算，限 40 必然空正文 → 书名
+    # 永远回退临时名；不限制让模型自己停（提示词已要求只输出书名）
+    title = llm.chat_text(sys, user, tag="plan_title", role="decide")
+    title = (title or "").strip().strip('"\'“”《》').strip()
+    if not title:
+        return ""
+    # 模型常输出「书名：《xx》」或书名+一句解释 → 优先从《》里取第一个片段
+    import re as _re
+    _m = _re.search(r"[《]([^《》]{1,16})[》]", title)
+    if _m:
+        return _m.group(1).strip()
+    # 去掉首句末尾标点与多余说明（按第一个中英标点截断）
+    _cut = _re.split(r"[，。！？;；、:：\s]+", title, maxsplit=1)[0].strip()
+    if _cut and len(_cut) <= 12:
+        return _cut
+    if _cut:
+        return _cut[:12]
     return ""
+
+
+def _fallback_title(idea):
+    """v1.97 起名失败时的临时名：从想法里抽几个关键词（民国/黑道/重生…），
+    不再产出「AI 新书」这种莫名其妙的占位名。"""
+    import re as _re
+    seg = _re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]", "", idea or "")
+    if len(seg) >= 2:
+        return seg[:8]
+    return "未命名小说"
 
 
 def extract_chapter_hint(text):
@@ -340,7 +383,7 @@ def extract_chapter_hint(text):
 
     返回 (n, label)：n 为数字（当全书下限用），label 为原话片段（进提示词让 AI 严格遵循）；
     没找到返回 (None, "")。只认阿拉伯数字 + 限定词，避免把「每章3000字」「第5章」
-    这类无关数字误判成章数要求。与 PC main_ai.py 逐字节同源（v1.57）。
+    这类无关数字误判成章数要求。
     """
     if not text:
         return None, ""
@@ -364,10 +407,11 @@ def plan_chapters(idea, story="", world="", rules="", author_constraint="",
     返回 clamp 后的 int；AI 调用失败返回 default（不阻塞成书流程）。
     story/world/rules：plan_story_ai 已起草的三栏设定（草案，AI 据此判断篇幅）；
     author_constraint：用户想法/约束里已给数字时优先遵循（提示词层处理）。
-    v1.57 加固（与 PC v1.80 同源）：
+    v1.80 加固：
     · 想法/约束里写了明确章数（如「不低于120章」）→ 提示词里作为硬性要求注入，
       并且该数字是全书章数的底线（AI 判断只可上浮、不可低于——用户明说过的数要兑现）；
-    · AI 判断失败时回退到「想法里写的数字」，而不是面板默认值。
+    · AI 判断失败时回退到「想法里写的数字」，而不是面板默认值（此前失败就按默认小数值
+      走，用户看到的全是没考虑他想法的结果）。
     """
     hint_n, hint_label = extract_chapter_hint(idea)
     if hint_n is None:
@@ -412,7 +456,12 @@ def generate_character_ai(description, project, store):
 
 
 def generate_batch_roles(description, project, store):
-    """AI 按自然语言需求批量生成角色卡，返回 [角色dict, ...]（只立形象）。"""
+    """AI 按自然语言需求批量生成角色卡，返回 [角色dict, ...]（只立形象）。
+
+    v1.99 修「B 缺失 + A 重复」：不再静默丢弃缺 name 的条目——模型给出缺姓名的角色
+    视为不合格，抛 ValueError 让调用方显式提示重试；防重由落库入口
+    save_generated_character（同名查重/复用）统一负责。
+    """
     sys, user = prompts.generate_batch_roles(description, project, store)
     data = llm.chat_json(sys, user, tag="gen_batch_roles", role="decide")
     if isinstance(data, list):
@@ -422,9 +471,15 @@ def generate_batch_roles(description, project, store):
     else:
         chars = []
     out = []
+    dropped = 0
     for c in chars:
         if isinstance(c, dict) and (str(c.get("name") or "")).strip():
             out.append(c)
+        else:
+            dropped += 1  # 缺姓名/格式异常：不再静默吞，交给调用方提示
+    if dropped:
+        raise ValueError("批量拆解出 %d 条缺少姓名的角色（模型可能没给全），"
+                         "已丢弃请重试，或把要生成的角色列得更明确。" % dropped)
     return out
 
 
@@ -662,7 +717,7 @@ def deai_auto_workflow(project, store, chapters, rules="", style_ref="",
 
 
 def retitle_chapters(project, store, start, end, with_content=True):
-    """批量重新设计第 start~end 章标题（v1.01；v1.59 默认读**完整正文**）：
+    """批量重新设计第 start~end 章标题（v1.01；v1.82 默认读**完整正文**）：
     勾选「让 AI 阅读章节正文后命名」= 每章附完整正文给 AI 依据全章内容取题
     （异常超长章给开头+结尾）；with_content=False = 只按梗概/原标题取题（省 token）。
     返回 (成功数, 失败数)。

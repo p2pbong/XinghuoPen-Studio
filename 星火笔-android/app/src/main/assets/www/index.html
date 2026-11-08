@@ -44,7 +44,7 @@
             title="界面缩放 50%~160%（同电脑端）：点击恢复 100%，双指捏合可自由缩放页面"><span class="zoom-t">界面缩放 </span><b class="zoom-pct">100%</b></span>
       <button class="zoom-btn" onclick="uiZoomStep(1)" title="放大界面（也可双指捏合缩放）">＋</button>
     </div>
-    <span class="ver" id="ver">安卓 v1.70</span>
+    <span class="ver" id="ver">安卓 v1.76</span>
     <button class="orient-btn" onclick="toggleOrientation()">⇄ 竖屏</button>
   </div>
 </aside>
@@ -541,10 +541,10 @@
       </div>
 
       <div class="card">
-        <div class="row"><b>AI 辅助起草</b><button class="mini" id="ps-ai-btn" onclick="planStoryAI()">AI 生成所选</button></div>
-        <div class="dim">说出你想写什么，AI 按想法起草上面三栏；已填的内容会作为续写基础，不会白填。</div>
-        <label>小说想法（想写什么、题材、主角/基调/看点）</label>
-        <textarea id="ps-idea" rows="3" placeholder="例：现代白领穿越修仙废土，觉醒「捡垃圾」金手指…基调轻松热血，短章快节奏。"></textarea>
+        <div class="row"><b>AI 辅助修改</b><button class="mini" id="ps-ai-btn" onclick="planStoryAI()">AI 按我的要求修改</button></div>
+        <div class="dim">在现有三栏基础上按你的要求修改勾选的内容——结果只显示在下方预览，不会直接改动上面三栏；截取满意段落替换对应栏后点「保存故事设定」。</div>
+        <label>你想怎么改？（例：把第二卷改成…/主角金手指改弱/结局改成开放式…留空=AI 按现有基调整体完善）</label>
+        <textarea id="ps-idea" rows="3" placeholder="例：第二卷改成先与仇家联姻再反目；主角金手指改成有代价的读心…"></textarea>
         <div class="row">
           <label>章数约束（可留空）</label>
           <input id="ps-constraint" placeholder="如：30 章" style="width:120px">
@@ -554,6 +554,9 @@
           <label class="chk"><input type="checkbox" id="ps-world" checked> 世界观</label>
           <label class="chk"><input type="checkbox" id="ps-rules" checked> 特殊规则</label>
         </div>
+        <!-- v1.72 修改稿预览（只展示，不写回三栏；截取满意段落替换） -->
+        <label>修改稿预览（不会改动上面三栏）</label>
+        <textarea id="ps-preview" rows="6" readonly placeholder="AI 修改稿显示在这里——从中截取满意的段落替换对应栏后点「保存故事设定」。"></textarea>
         <div class="dim" id="ps-msg"></div>
       </div>
 

@@ -44,6 +44,8 @@ class CharacterCard:
         # ---- 酒馆（SillyTavern）Persona 风格字段 ----
         self.description = ""     # 综合描述（外貌+性格+背景+言行特征；推理时优先使用）
         self.scenario = ""        # 当前场景/处境（会随剧情推进更新）
+        self.plot_arc = ""        # v1.100 人物剧情线（该角色身上未回收的人物伏笔/前因后果/未了之事，
+                                  # ≤200字；主AI与正文AI都读、跨章持续——如彭鑫孕期、林俊杰临终留言）
         self.first_mes = ""       # 开场白（角色首次登场的第一句话/动作）
         self.mes_example = ""     # 示例对话（教会模型该角色的说话风格）
         self.system_prompt = ""   # 附加系统提示（扮演该角色时的额外规则）
@@ -71,6 +73,7 @@ class CharacterCard:
             "speech_style": self.speech_style, "backstory": self.backstory,
             "relationships": self.relationships, "appearance": self.appearance,
             "description": self.description, "scenario": self.scenario,
+            "plot_arc": self.plot_arc,   # v1.100 人物剧情线
             "first_mes": self.first_mes, "mes_example": self.mes_example,
             "system_prompt": self.system_prompt,
             "post_history_instructions": self.post_history_instructions,
@@ -113,6 +116,7 @@ class CharacterCard:
         card.appearance = d.get("appearance", "") or ""
         card.description = d.get("description", "") or ""
         card.scenario = d.get("scenario", "") or ""
+        card.plot_arc = d.get("plot_arc", "") or ""  # v1.100 兼容旧卡
         card.first_mes = d.get("first_mes", "") or ""
         card.mes_example = d.get("mes_example", "") or ""
         card.system_prompt = d.get("system_prompt", "") or ""
@@ -255,17 +259,28 @@ class Chapter:
 
 
 class Foreshadow:
-    """伏笔：埋设/回收记录。"""
+    """伏笔：埋设/回收记录（v1.100 起双账本）。
+
+    事件性质伏笔（f_category="event"）：跨章展开的故事线——用 storyline 给线命名、
+    related_chars 挂干系人、progress 记推进轨迹、next_target 记下一步该在哪展开/由谁触发；
+    人物性质伏笔（f_category="character"）：挂在特定角色身上的未了之事，
+    详细信息落该角色卡 plot_arc，此处只记简账。
+    """
 
     def __init__(self, text="", f_type="plant", target_char=""):
         self.id = uid()
         self.text = text
         self.f_type = f_type           # plant | payoff | echo
         self.target_char = target_char # 依托/回收角色 id
+        self.f_category = ""           # v1.100 ""|event|character（缺省当 event 处理）
+        self.storyline = ""            # v1.100 事件线名（同线伏笔共享，如「打渔令」）
+        self.related_chars = []        # v1.100 事件线干系人（角色名列表）
+        self.progress = []             # v1.100 事件线推进轨迹（["第N章：进展", ...]，最多留6条）
+        self.next_target = ""          # v1.100 下一步该在哪展开/由谁触发（可空）
         self.status = "open"           # open | resolved
         self.planted_chapter = 0
         self.resolved_chapter = 0
-        self.planted_note = ""  # v1.66（与 PC v1.92 同源）埋设要点：当时怎么埋的（借什么物件/场景/动作/台词露出）
+        self.planted_note = ""  # v1.92 埋设要点：当时怎么埋的（借什么物件/场景/动作/台词露出）
 
     def to_dict(self):
         return {
@@ -274,6 +289,11 @@ class Foreshadow:
             "planted_chapter": self.planted_chapter,
             "resolved_chapter": self.resolved_chapter,
             "planted_note": self.planted_note,
+            "f_category": self.f_category,
+            "storyline": self.storyline,
+            "related_chars": list(self.related_chars),
+            "progress": list(self.progress),
+            "next_target": self.next_target,
         }
 
     @classmethod
@@ -283,7 +303,13 @@ class Foreshadow:
         f.status = d.get("status", "open")
         f.planted_chapter = d.get("planted_chapter", 0)
         f.resolved_chapter = d.get("resolved_chapter", 0)
-        f.planted_note = d.get("planted_note", "")  # v1.66 兼容旧台账
+        f.planted_note = d.get("planted_note", "")  # v1.92 兼容旧台账
+        f.f_category = d.get("f_category", "") or ""  # v1.100 兼容旧台账
+        f.storyline = d.get("storyline", "") or ""    # v1.100 兼容旧台账
+        f.related_chars = [str(x).strip() for x in (d.get("related_chars") or []) if str(x).strip()]
+        f.progress = [str(x).strip() for x in (d.get("progress") or []) if str(x).strip()]
+        f.next_target = d.get("next_target", "") or ""
+        f.progress = f.progress[-6:]   # 只留最近 6 条推进记录
         return f
 
 
@@ -308,7 +334,7 @@ class NovelProject:
         self.story_main_prompt = ""    # 主AI全局提示词（"你是一个…"式或自然语言，只注入主AI，控制剧情把控）
         self.story_style_ref = ""  # 参考文风样本（用户粘贴的文风示例文本，仅注入正文AI，主AI不读）
         self.story_style_note = ""  # 风格要点（AI 从文风样本/前文归纳的可执行要点，写作与校对逐条体现）
-        self.story_title_rules = ""  # v1.62（与 PC v1.88 同源）章节标题命名规则（用户自定义，最高优先；空=内置通用规则）
+        self.story_title_rules = ""  # v1.88 章节标题命名规则（用户自定义，最高优先；空=内置通用规则）
         self.story_tech_source = ""  # 写作技巧库·素材（用户粘贴的爆款章节片段，供 AI 拆解技巧）
         self.story_techniques = ""  # 写作技巧库（AI 从爆款素材拆解的可执行技巧清单，写作/审查参考运用）
         self.story_summary = ""    # 主AI管理笔记（剧情压缩卷，写作AI可读）
@@ -376,7 +402,7 @@ class NovelProject:
             "story_main_prompt": self.story_main_prompt,
             "story_style_ref": self.story_style_ref,
             "story_style_note": self.story_style_note,
-            "story_title_rules": self.story_title_rules,  # v1.62 章节标题命名规则（用户自定义，最高优先）
+            "story_title_rules": self.story_title_rules,  # v1.88 章节标题命名规则（用户自定义，最高优先）
             "story_tech_source": self.story_tech_source,
             "story_techniques": self.story_techniques,
             "story_summary": self.story_summary,
@@ -427,7 +453,7 @@ class NovelProject:
         p.story_main_prompt = d.get("story_main_prompt", "")
         p.story_style_ref = d.get("story_style_ref", "")
         p.story_style_note = d.get("story_style_note", "")
-        p.story_title_rules = d.get("story_title_rules", "")  # v1.62 章节标题命名规则（空=内置通用规则）
+        p.story_title_rules = d.get("story_title_rules", "")  # v1.88 章节标题命名规则（空=内置通用规则）
         p.story_tech_source = d.get("story_tech_source", "")
         p.story_techniques = d.get("story_techniques", "")
         p.story_summary = d.get("story_summary", "")

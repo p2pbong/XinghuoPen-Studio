@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """总调度引擎：串联「出场决断 → 角色推理 → 主AI校验 → 写作 → 审查 → 战后更新」全流程。"""
 import os
+import re
 
 import char_ai
 import config
@@ -574,7 +575,8 @@ class NovelEngine:
                                if p.strip()), "")
             brief = first_para[:120]
         chapter.brief = brief
-        self._apply_foreshadows(project, chapter)
+        # v1.100 传入战后更新结果：正文实际已回收的伏笔（foreshadow_resolved）一并落账
+        self._apply_foreshadows(project, chapter, world)
 
         chapter.status = CHAPTER_STATUS_APPROVED
         self.store.save_chapter(chapter)
@@ -609,10 +611,20 @@ class NovelEngine:
                 # 主AI笔记·重要角色档案与后续剧情灵感（结构化保存，供 story_context / 决断候选池使用）
                 kcs = summary_data.get("key_characters") or []
                 if isinstance(kcs, list):
-                    project.story_characters = [
-                        {"name": str(x.get("name", "")).strip(),
-                         "info": str(x.get("info", "")).strip()}
-                        for x in kcs if isinstance(x, dict) and str(x.get("name", "")).strip()]
+                    cleaned = []
+                    for x in kcs:
+                        if not isinstance(x, dict):
+                            continue
+                        nm = str(x.get("name", "") or "").strip()
+                        if not nm:
+                            continue
+                        cleaned.append({"name": nm,
+                                        "info": str(x.get("info", "") or "").strip()})
+                    project.story_characters = cleaned
+                    # v1.100 人物剧情线 arc → 回写角色卡 plot_arc（人物伏笔详录在角色卡）
+                    arc_written = self._apply_key_characters_arc(project, kcs, ch_no)
+                    if arc_written:
+                        self.log("info", "角色档案 arc 回写 %d 张角色卡。" % arc_written)
                 ideas = summary_data.get("ideas") or []
                 if isinstance(ideas, list):
                     project.story_ideas = [str(x).strip() for x in ideas if str(x).strip()]
@@ -636,7 +648,7 @@ class NovelEngine:
             try:
                 closing = main_ai.volume_closing(project, self.store, vol)
                 if isinstance(closing, dict):
-                    # v1.70（与 PC v1.96 同源）卷末衔接规范化：{"summary","next"}，兼容旧版文本
+                    # v1.96 卷末衔接规范化：{"summary","next"}，兼容旧版文本（dict 外原样记录）
                     closing = "卷末总结：%s\n承接下一卷：%s" % (
                         closing.get("summary", ""), closing.get("next", ""))
                 self.store.append_log("【本卷卷末】\n%s" % closing)
@@ -648,7 +660,7 @@ class NovelEngine:
                 state["volume"] = int(state.get("volume", 1)) + 1
                 self.log("info", "已进入第 %d 卷（沿用旧版结构化规划）。" % state["volume"])
             elif int(project.volume_target or 0) > 0:
-                # v1.57 全自动连写按「你设置的章节数」自动停：目标达成即全书完成、直接停下，
+                # v1.80 全自动连写按「你设置的章节数」自动停：目标达成即全书完成、直接停下，
                 # 不再清空目标继续「主AI自由续写」（那是当初设计，用户明确不要）。
                 # 想继续写：项目页把目标改大保存，或一键成书点「继续写」，都会自动解除完结。
                 state["story_complete"] = True
@@ -1336,34 +1348,194 @@ class NovelEngine:
                 card.chapter_states = card.chapter_states[-500:]
             self.store.save_character(card, lib)
 
-    def _apply_foreshadows(self, project, chapter):
+    def _apply_foreshadows(self, project, chapter, world=None):
+        """伏笔账本落账（v1.100 双账本 + v1.101 正文反扫）：
+
+        埋设：consolidation 的 plant 落账（含 f_category/storyline/related_chars/planted_note）；
+              人物性质伏笔额外追加进该角色卡 plot_arc（人物伏笔详录在角色卡）；
+        正文反扫（v1.101）：world.new_foreshadows——正文AI/作者加戏新冒出的伏笔登记回账本
+              （与已有记录模糊去重），world.missed_plants——本章安排的伏笔正文未写实则记运行日志提醒；
+        推进：consolidation 的 progress_update 按伏笔 id/线名匹配开放事件线，追加推进轨迹与下一步；
+        回收：consolidation 的 payoff（文本/线名匹配） + 战后更新检测到的正文实际回收
+              （foreshadow_resolved，v1.100 修复此前该结果从未落账的洞）。
+        """
         fs = self.store.load_foreshadows()
         ch_no = chapter.index
         cons = chapter.reasoning.get("consolidation", {}) or {}
-        want_plant = []
-        for f in cons.get("foreshadows", []) or []:
-            if isinstance(f, dict) and f.get("f_type") == "plant" and f.get("text"):
-                want_plant.append(f)
-        # 埋设新伏笔（同文本不重复埋）
         existing_texts = {x.text for x in fs}
-        for f in want_plant:
-            if f["text"] not in existing_texts:
-                fs.append(Foreshadow(f["text"], "plant",
-                                     str(f.get("target_character", "") or "")))
-                fs[-1].planted_chapter = ch_no
-                # v1.66（与 PC v1.92 同源）记录「当时怎么埋的」：依托的物件/场景/动作/台词要点——
-                # 正文AI写实埋设质感、后续回收与压缩笔记呼应都靠它
-                fs[-1].planted_note = str(f.get("planted_note", "") or "").strip()
-        # 回收：consolidation 中的 payoff 匹配开放伏笔
-        payoffs = [str(f.get("text", "")) for f in (cons.get("foreshadows", []) or [])
-                   if isinstance(f, dict) and f.get("f_type") == "payoff" and f.get("text")]
+        # 埋设：主AI consolidate 安排的 plant（精确去重：同文本不重复埋）
+        for f in cons.get("foreshadows", []) or []:
+            if isinstance(f, dict) and f.get("f_type") == "plant":
+                nf = self._record_plant(project, ch_no, f, existing_texts)
+                if nf:
+                    fs.append(nf)
+        # 正文反扫：正文AI/作者加戏新埋的伏笔登记回账本（v1.101，模糊去重防重复登记）
+        if world:
+            for f in world.get("new_foreshadows") or []:
+                if isinstance(f, dict):
+                    nf = self._record_plant(project, ch_no, f, existing_texts, fuzzy=True)
+                    if nf:
+                        fs.append(nf)
+                        self.log("info", "正文反扫登记新伏笔：%s（%s）" % (
+                            nf.text[:40],
+                            {"event": "事件", "character": "人物"}.get(nf.f_category, "未分类")))
+            missed = [str(x).strip() for x in (world.get("missed_plants") or [])
+                      if str(x).strip()]
+            if missed:
+                self.log("warn", "本章安排的伏笔正文未写实：%s"
+                         % "、".join(m[:40] for m in missed[:5]))
+        # 事件线推进：consolidation 的 progress_update 落账（按伏笔 id 或线名匹配）
+        for pu in cons.get("progress_update", []) or []:
+            if not isinstance(pu, dict):
+                continue
+            step = str(pu.get("step", "") or "").strip()
+            if not step:
+                continue
+            key = str(pu.get("key", "") or "").strip()
+            for f in fs:
+                if f.status != "open":
+                    continue
+                hit = bool(key) and (key == f.id or key == (f.storyline or ""))
+                if not hit:
+                    continue
+                tag = "第%d章：%s" % (ch_no, step)
+                if f.progress and f.progress[-1] == tag:
+                    continue   # 同章同步不重复追加
+                f.progress.append(tag)
+                f.progress = f.progress[-6:]
+                nxt = str(pu.get("next", "") or "").strip()
+                if nxt:
+                    f.next_target = nxt
+        # 回收：
+        # a) consolidation 的 payoff（按文本，或按事件线名整线回收）
+        payoffs = [str(f.get("text", "")).strip()
+                   for f in (cons.get("foreshadows", []) or [])
+                   if isinstance(f, dict) and f.get("f_type") == "payoff"
+                   and str(f.get("text", "") or "").strip()]
+        # b) 战后更新检测到的本章正文实际回收（v1.100 修复：此前该结果从未落账）
+        resolved_ids = []
+        if world:
+            rid = world.get("foreshadow_resolved") or []
+            resolved_ids = [str(x).strip() for x in rid if str(x).strip()]
         for f in fs:
             if f.status != "open":
                 continue
+            if f.id in resolved_ids:
+                f.status = "resolved"
+                f.resolved_chapter = ch_no
+                continue
             for pt in payoffs:
-                if f.text in pt or pt in f.text:
-                    if len(f.text) >= 4 or len(pt) >= 4:
-                        f.status = "resolved"
-                        f.resolved_chapter = ch_no
-                        break
+                if not pt:
+                    continue
+                hit = ((f.text in pt or pt in f.text)
+                       and (len(f.text) >= 4 or len(pt) >= 4))
+                if not hit and f.storyline and (
+                        pt == f.storyline or f.storyline in pt or pt in f.storyline):
+                    hit = True
+                if hit:
+                    f.status = "resolved"
+                    f.resolved_chapter = ch_no
+                    break
         self.store.save_foreshadows(fs)
+
+    def _apply_key_characters_arc(self, project, kcs, ch_no):
+        """v1.102 把压缩器 key_characters 的 arc（人物线）回写进角色卡 plot_arc。
+
+        空 arc=无未了之事/模型未给：保守不清空旧记录（避免模型偷懒清掉真线）。
+        返回回写张数。码字后台链与 finalize 共用同一条落账逻辑。
+        """
+        arc_written = 0
+        name_to_cid = {}
+        try:
+            for cid, nm, _st in self.store.list_characters():
+                if nm and nm not in name_to_cid:
+                    name_to_cid[nm] = cid
+        except Exception:
+            return 0
+        for x in kcs:
+            if not isinstance(x, dict):
+                continue
+            arc = str(x.get("arc", "") or "").strip()
+            if not arc:
+                continue   # 空串不清空旧记录，防误删
+            nm = str(x.get("name", "") or "").strip()
+            if not nm:
+                continue
+            cid = name_to_cid.get(nm)
+            if not cid:
+                for n2, c2 in name_to_cid.items():
+                    if nm and (nm in n2 or n2 in nm):
+                        cid = c2
+                        break
+            if not cid:
+                continue
+            try:
+                card, lib = self.store.load_character(cid)
+                if card and (arc != (card.plot_arc or "").strip()):
+                    card.plot_arc = arc[:200]
+                    card.version += 1
+                    card.updated_chapter = ch_no
+                    self.store.save_character(card, lib)
+                    arc_written += 1
+            except Exception:
+                continue
+        return arc_written
+
+    def _record_plant(self, project, ch_no, f, existing_texts, fuzzy=False):
+        """按双账本规则登记一条新伏笔（v1.101 与 consolidation plant / 正文反扫共用）。
+
+        - 去重：fuzzy=False（主AI安排）同文本不重复埋（沿用旧约定）；
+                 fuzzy=True（正文反扫）与已有记录文本互相包含（≥4字）视为重复，不登记；
+        - 双账本：f_category 未标明时按「有依托角色且无线名」自动推断为人物伏笔；
+        - 人物性质伏笔同步追加进该角色卡 plot_arc；
+        - 登记成功后把文本并入 existing_texts（增量去重）。返回新 Foreshadow 或 None。
+        """
+        text = str(f.get("text", "") or "").strip()
+        if not text:
+            return None
+        for t in existing_texts:
+            if not t:
+                continue
+            dup = (t == text)
+            if (not dup) and fuzzy and len(t) >= 4 and len(text) >= 4 \
+                    and (t in text or text in t):
+                dup = True
+            if dup:
+                return None
+        nf = Foreshadow(text, "plant", str(f.get("target_character", "") or ""))
+        nf.planted_chapter = ch_no
+        nf.f_category = str(f.get("f_category", "") or "").strip()
+        nf.storyline = str(f.get("storyline", "") or "").strip()
+        if nf.f_category not in ("event", "character"):
+            # 未标明时按依托角色 + 是否给线名推断：有人物且无线名 → 人物伏笔，否则事件
+            nf.f_category = ("character"
+                             if (nf.target_char and not nf.storyline) else "event")
+        rel = f.get("related_chars") or []
+        if isinstance(rel, str):
+            rel = re.split(r"[，,、;；\s]+", rel)
+        nf.related_chars = [str(x).strip() for x in rel if str(x).strip()]
+        nf.planted_note = str(f.get("planted_note", "") or "").strip()
+        existing_texts.add(text)
+        # 人物性质伏笔 → 同步进该角色卡 plot_arc（人物伏笔详录在角色卡）
+        if nf.f_category == "character" and nf.target_char:
+            self._append_plot_arc_by_name(project, nf.target_char,
+                                          "%s（第%d章埋设）" % (text, ch_no))
+        return nf
+
+    def _append_plot_arc_by_name(self, project, name, entry):
+        """把一条人物伏笔追加进指定角色的 plot_arc（不重复追加；总长 ≤300 防御截断）。"""
+        try:
+            for cid, nm, _st in self.store.list_characters():
+                if not (nm and name and (nm == name or name in nm or nm in name)):
+                    continue
+                card, lib = self.store.load_character(cid)
+                if not card:
+                    continue
+                old = (card.plot_arc or "").strip()
+                if entry in old:
+                    return
+                card.plot_arc = ("%s；%s" % (old, entry) if old else entry)[:300]
+                self.store.save_character(card, lib)
+                return
+        except Exception:
+            pass

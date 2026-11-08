@@ -8,7 +8,9 @@ MAIN_SYSTEM = (
     "你的一切输出都基于用户提供的既有设定与各角色的实际认知，绝不添加设定之外的信息。"
 )
 
-# v1.65（与 PC v1.91 同源）内置默认·章节标题命名规则（网红/文学标题命名经验）：
+# v1.91 内置默认·章节标题命名规则（取自网文/文学标题命名经验：标题=章节钩子不是内容复述，
+# 忌空泛词，具体动作+物件/身份关系/反差/数字优于抽象与修饰；xx与xx 可用但须真并列对照要素；
+# 长度随本书气质）。用户可在重命名按钮旁/文风参考③.8 编辑，重置按钮可恢复本默认。
 DEFAULT_TITLE_RULES = ("标题要浓缩本章发生的事，写成『章节钩子』而不是内容复述：亮出冲突、悬念或"
                        "情绪缺口，不把结果写进标题（剧透）；忌用『真相/秘密/震惊/意外来袭/惊天/大战』"
                        "这类空泛词；优先用具体动作+物件、身份+关系、反差对撞、具体数字"
@@ -102,6 +104,9 @@ def fmt_card(card):
         lines.append("示例对话（模仿其语气）：\n%s" % card.mes_example)
     if card.relationships:
         lines.append("人际关系：%s" % card.relationships)
+    if (card.plot_arc or "").strip():
+        # v1.102 人物剧情线：角色卡标准视图统一带出，推理/盘点/审查都能看到未了之事
+        lines.append("人物剧情线：%s" % card.plot_arc[:200])
     return "\n".join(lines)
 
 
@@ -362,24 +367,153 @@ def _overdue_mark(f, current_no, overdue_chapters=None):
 
 
 def open_foreshadows_text(fs_list, current_no=0, overdue_chapters=None):
-    """开放伏笔清单（含逾期标注：埋设后超过阈值章数未回收 → ⚠逾期N章）。
+    """开放伏笔清单（v1.100 双账本：事件线分组 + 人物/散笔；含逾期标注）。
 
+    事件性质伏笔按 storyline 分组列出：线名 + 干系人 + 推进轨迹（最近2条）+
+    下一步展开目标；人物性质伏笔与未归类伏笔列在散笔区。
     逾期伏笔是长篇写作的"欠账"——主AI决断/校验/压缩时都应优先安排回收。
     """
     if overdue_chapters is None:
         overdue_chapters = _foreshadow_overdue_chapters()
-    if not fs_list:
+    opens = [f for f in fs_list if f.status == "open"]
+    if not opens:
         return "（当前无开放伏笔）"
-    lines = ["【开放伏笔清单】"]
-    for f in fs_list:
+    lines = ["【开放伏笔清单（事件伏笔=跨章故事线，需持续展开；人物伏笔详情在对应角色卡 plot_arc）】"]
+    by_line, singles = {}, []
+    for f in opens:
+        sl = (f.storyline or "").strip()
+        if sl:
+            by_line.setdefault(sl, []).append(f)
+        else:
+            singles.append(f)
+    for sl, group in sorted(by_line.items()):
+        mark = ""
+        for f in group:
+            m = _overdue_mark(f, current_no, overdue_chapters)
+            if m:
+                mark = m
+                break
+        rel = []
+        for f in group:
+            for c in (f.related_chars or []):
+                if c and c not in rel:
+                    rel.append(c)
+        head = group[0]
+        more = "（本条线共%d笔）" % len(group) if len(group) > 1 else ""
+        line = "■ 事件线「%s」%s%s：%s（埋于第%s章%s）" % (
+            sl, ("　" + mark) if mark else "", more, head.text,
+            head.planted_chapter,
+            ("；埋设要点：%s" % (head.planted_note or "").strip()) if (head.planted_note or "").strip() else "")
+        if rel:
+            line += "\n　↳ 干系人：%s" % "、".join(rel)
+        else:
+            line += "\n　↳ 干系人：%s" % (head.target_char or "无")
+        prog = head.progress or []
+        if prog:
+            line += "\n　↳ 已推进：%s" % "；".join(prog[-2:])
+        if (head.next_target or "").strip():
+            line += "\n　↳ 下一步：%s" % head.next_target.strip()
+        lines.append(line)
+    for f in singles:
         mark = _overdue_mark(f, current_no, overdue_chapters)
-        # v1.66（与 PC v1.92 同源）附「埋设要点」（怎么埋的）供正文AI写实与回收呼应
+        cat = {"character": "人物伏笔", "event": "事件伏笔"}.get(f.f_category or "", "伏笔")
         _note = (f.planted_note or "").strip()
-        lines.append("- [%s] %s%s（依托角色：%s；埋设于第%s章%s）" %
-                     (f.f_type, f.text, ("　" + mark) if mark else "",
-                      f.target_char or "无", f.planted_chapter,
+        rel = "、".join(f.related_chars or []) or f.target_char or "无"
+        lines.append("- [%s·%s] %s%s（干系人：%s；埋于第%s章%s）" %
+                     (cat, f.f_type, f.text, ("　" + mark) if mark else "",
+                      rel, f.planted_chapter,
                       ("；埋设要点：%s" % _note) if _note else ""))
     return "\n".join(lines)
+
+
+def _foreshadow_related_cards(project, store, limit=5):
+    """v1.100 与开放伏笔/剧情线相关的角色档案（人物伏笔详录所在地）。
+
+    从开放伏笔的干系人/依托角色 + 主AI笔记点名的角色中匹配名册，
+    注入其人物剧情线（plot_arc）/关系/当前处境——供主AI"先看笔记、再看相关角色卡"。
+    """
+    try:
+        fs = store.load_foreshadows()
+    except Exception:
+        fs = []
+    names = []
+    for f in fs:
+        if f.status != "open":
+            continue
+        for c in (f.related_chars or []):
+            if c and c not in names:
+                names.append(c)
+        tc = (f.target_char or "").strip()
+        if tc and tc not in names:
+            names.append(tc)
+    for kc in getattr(project, "story_characters", None) or []:
+        nm = str(kc.get("name", "") or "").strip()
+        if nm and nm not in names:
+            names.append(nm)
+    if not names:
+        return ""
+    name_to_id = {}
+    for cid, nm, _st in store.list_characters():
+        if nm and nm not in name_to_id:
+            name_to_id[nm] = cid
+    out = []
+    for nm in names:
+        cid = name_to_id.get(nm)
+        if not cid:
+            for n2, c2 in name_to_id.items():
+                if nm and (nm in n2 or n2 in nm):
+                    cid = c2
+                    break
+        if not cid:
+            continue
+        card, lib = store.load_character(cid)
+        if not card:
+            continue
+        arc = (card.plot_arc or "").strip()
+        rel = (card.relationships or "").strip()
+        scen = (lib.scenario if lib else "") or ""
+        parts = ["- %s（%s）：" % (card.name, card.role or "?")]
+        if scen:
+            parts.append("此刻%s。" % scen[:60])
+        if rel:
+            parts.append("关系：%s。" % rel[:70])
+        if arc:
+            parts.append("人物线：%s。" % arc[:120])
+        if len(parts) == 1:
+            parts.append("（档案无特别备注）")
+        out.append("".join(parts))
+        if len(out) >= limit:
+            break
+    if not out:
+        return ""
+    return ("【与开放伏笔/剧情线相关的角色档案（先读完笔记，再看这些角色卡，"
+            "然后定本章剧情）】\n" + "\n".join(out))
+
+
+def _cast_cards_text(store, inferences):
+    """v1.100 本章出场角色档案摘要（consolidate 校验人设/人物伏笔的依据）。"""
+    out = []
+    for cid in list(inferences.keys())[:7]:
+        if not cid or cid.startswith("_"):
+            continue
+        card, lib = store.load_character(cid)
+        if not card:
+            continue
+        desc = (card.description or card.personality or "").strip()
+        rel = (card.relationships or "").strip()
+        arc = (card.plot_arc or "").strip()
+        line = "- %s（%s，%s）：%s" % (
+            card.name, card.role or "?", card.status,
+            (desc[:90] + "…" if len(desc) > 90 else desc) if desc else "（无人设描述）")
+        if rel:
+            line += "；关系：%s" % (rel[:60] + "…" if len(rel) > 60 else rel)
+        if arc:
+            line += "；人物线：%s" % (arc[:100] + "…" if len(arc) > 100 else arc)
+        out.append(line)
+    if not out:
+        return ""
+    return ("【本章出场角色档案（主AI校验人设/人物伏笔依据；正文AI写作时不注入此块）】\n"
+            + "\n".join(out))
 
 
 def overdue_foreshadow_lines(fs_list, current_no=0, overdue_chapters=None):
@@ -404,9 +538,11 @@ def decide_characters(project, store, chapter_no, vol_no, vol_rank):
     target = project.chapter_target()
     sys = main_system(project) + "\n现在执行第一步：出场角色决断。只做决断，不写作正文。"
     lore = fmt_lore(project, _recent_scan(project, store))
+    related = _foreshadow_related_cards(project, store)
     user = "\n\n".join([
         fmt_story(project),
         story_context(project, store),
+        related if related else "",
         char_pool(project, store),
         open_foreshadows_text(store.load_foreshadows(), current_no=chapter_no),
         lore,
@@ -478,12 +614,17 @@ def consolidate(project, store, chapter_no, scene_focus, inferences, new_char_po
     把结果作为 extra_context 重新喂回再判一轮）；kb_prompt 为知识库维护说明（默认走通用文案）。
     """
     sys = main_system(project) + "\n现在执行第三步：综合校验与主线把关。"
+    # v1.100 先笔记 → 再看相关角色卡 → 定本章剧情：注入与开放伏笔相关的角色档案 + 本章出场角色档案
+    related = _foreshadow_related_cards(project, store)
+    cast_arch = _cast_cards_text(store, inferences)
     lines = [
         fmt_story(project),
         story_context(project, store),
+        related if related else "",
         open_foreshadows_text(store.load_foreshadows(), current_no=chapter_no),
         fmt_lore(project, _recent_scan(project, store)),
         "【本章场景焦点】%s" % scene_focus,
+        cast_arch if cast_arch else "",
         "【各角色推理结果】",
     ]
     for char_id, data in inferences.items():
@@ -587,7 +728,7 @@ def consolidate(project, store, chapter_no, scene_focus, inferences, new_char_po
         "主AI会自动建档并让该角色本章登场；需要转折或新矛盾时用 new_event 设计新事件；"
         "两者可同时给出；走向没问题才用 none；\n"
         "3. 裁定本章最终走向 approved_direction（**给正文AI的写作方向，必须按固定要素逐行写，"
-        "v1.67（与 PC v1.93 同源）格式**）：\n"
+        "v1.93 格式**）：\n"
         "   · 本章核心事件：『谁做了什么导致/发现什么』（动词+具体对象+结果）；\n"
         "   · 从哪到哪：承接上一章结尾状态（可引用其场景/悬念），本章结束时剧情推进到什么新状态；\n"
         "   · 必须传达的信息/对话要点：本章要露出的情报、要说清的关键话（没有写『无』）；\n"
@@ -597,9 +738,18 @@ def consolidate(project, store, chapter_no, scene_focus, inferences, new_char_po
         "**禁止用『升华/张力/氛围感/细腻/递进/精彩/震撼』等不可执行的空洞词指挥正文AI**"
         "（例：空洞『渲染温馨气氛』不如落地『写晚饭热气升起时两人谁都不先开口的沉默』——"
         "精确大于天，正文AI看不懂文艺腔）；总体≤180字；\n"
-        "4. 伏笔管理：检查开放伏笔是否应在本章回收，或是否应埋设新伏笔（埋设时必须考虑依托角色的设定是否支持，"
-        "target_character 填角色名或留空，timing 填「本卷」「下卷」「近几章」）。"
-        "**【新埋伏笔必须给 planted_note（埋设要点，≤60字）】**：写清这枚伏笔这一幕是**怎么露出来的**"
+        "4. 伏笔管理（v1.100 双账本：事件伏笔=跨章故事线，人物伏笔=角色的未了之事，两条账分开记）：\n"
+        "   - **事件性质伏笔**（f_category=\"event\"，默认）：新埋线必须给 storyline（线名，同线后续伏笔沿用同名）、"
+        "related_chars（干系人角色名，事件牵涉谁就写谁）、planted_note（怎么埋的，≤60字）。"
+        "**埋线不等于埋完**：若本章让某条已开放事件线取得哪怕一小步进展（发现线索/逼近一步/引出新矛盾），"
+        "必须把进展写进 progress_update（step 给本章推进的具体一步，动词+对象；next 给下一步该在哪展开/由谁触发）；"
+        "开放线本章完全没碰时，在 issues 里评估该线是否应推进（线不能凭空消失）；\n"
+        "   - **人物性质伏笔**（f_category=\"character\"）：挂在特定角色身上的未了之事（渐变的秘密状态、临死留言、"
+        "未兑现的承诺等）——target_character 必填，台账只记简账，详细前因后果会同步到该角色卡 plot_arc"
+        "（本章若是伏笔新埋/推进/了结的关键章，战后更新会更新角色卡）；\n"
+        "   - 回收（payoff）：可按伏笔文本、也可按事件线名回收（如『回收打渔令线』）；"
+        "检查开放伏笔是否应在本章回收（先看【开放伏笔清单】的逾期与下一步）；\n"
+        "   - **新埋伏笔必须给 planted_note（埋设要点，≤60字）**：写清这枚伏笔这一幕是**怎么露出来的**"
         "——依托的物件/场景/动作/无意间的一句话（如『主角在当铺翻到一封盖着陈记火漆的信，没敢拆』），"
         "供正文AI把埋设写实、供后续回收时精准呼应；\n"
         "5. 知识库维护：若本章有值得长期记住的内容（重要设定确认、关键人物伏笔落定、"
@@ -648,7 +798,8 @@ def consolidate(project, store, chapter_no, scene_focus, inferences, new_char_po
         '"scene_cards":["(可选)选中的正文AI情景规则卡名（**只填卡名本身，不要带【分类】前缀和来源标注**，如\\"环境奇观渲染描写\\"而不是\\"〔氛围酝酿〕环境奇观渲染描写\\"，否则系统按卡名匹配不到库里的卡会白选；**可多选——本章同时出现几个特殊情景就选几张、全选不漏**，各卡对应本章不同的情景片段、分工组合互不冲突；无匹配则空数组）"],'
         '"scene_cards_reason":"(必填,一句话)本条选卡判断的理由：选中=本章哪个情景命中了哪张卡；不选=本章为何常规叙事/库卡为何不匹配；自做=需要但无匹配所以设计新卡（供运行记录展示，漏用匹配卡会被认为失职）",'
         '"new_scene_cards":[{"name":"(可选,仅当本章正文类型在本项目可用库里无匹配卡时)自行设计的新情景卡名,不得与已有卡重名;自制前必须参考上方清单中已有卡的写法摘录(结构/详略/表述风格),不凭空创造","content":"按范例结构(核心定位+分节+写作执行自检清单)的完整卡内容,只存入本项目库"}],'
-        '"foreshadows":[{"f_type":"plant|payoff","text":"伏笔内容","target_character":"角色名或空","timing":"本卷|下卷|近几章","planted_note":"(仅plant必填,≤60字)埋设要点：借什么物件/场景/动作/台词怎么露出来的"}],'
+        '"foreshadows":[{"f_type":"plant|payoff","f_category":"event|character(事件=跨章故事线/人物=角色未了之事,缺省event)","text":"伏笔内容","storyline":"(事件伏笔必填)事件线名,同线沿用同名,如『打渔令』","related_chars":["(事件伏笔)干系人角色名"],"target_character":"角色名或空","timing":"本卷|下卷|近几章","planted_note":"(仅plant必填,≤60字)埋设要点：借什么物件/场景/动作/台词怎么露出来的"}],'
+        '"progress_update":[{"key":"已有事件线的伏笔id或线名","step":"本章该线推进的具体一步(30字内,动词+对象)","next":"下一步该在哪展开/由谁触发(20字内,可空)"}](开放事件线有推进才填,无则空数组),'
         '"need_chapters":["若前文概要不足以支撑判断,列出需要回顾的章节号,如\\"3\\";否则留空数组"],'
         '"kb_update":["%s(可空数组)"],'
         '"search_queries":["(可选,仅联网搜索开启时)需要搜索的查询词;不需要则空数组"]}'
@@ -693,8 +844,8 @@ def adapt_project_scene_card_ai(project, cards):
 
 
 def _writer_prior_context(project, store, chapter_no, inferences):
-    """v1.66（与 PC v1.92 同源）正文AI「前文脉络」增强：开放伏笔台账（含埋设要点）+
-    出场关键角色的立场/动机/行事风格——正文AI据此写言行，不再只凭几句裁定干写。返回块文本或空串。"""
+    """v1.92 正文AI「前文脉络」增强：开放伏笔台账（含埋设要点）+ 出场关键角色的
+    立场/动机/行事风格——正文AI据此写言行，不再只凭几句裁定干写。返回块文本或空串。"""
     blocks = []
     try:
         fs_block = open_foreshadows_text(store.load_foreshadows(), current_no=chapter_no)
@@ -715,7 +866,8 @@ def _writer_prior_context(project, store, chapter_no, inferences):
         bits = []
         if card is not None:
             for label, attr in (("目标", "goals"), ("原则", "values"),
-                                ("忌惮", "fears"), ("行事风格", "traits")):
+                                ("忌惮", "fears"), ("行事风格", "traits"),
+                                ("人物线", "plot_arc")):  # v1.102 人物线跟身走
                 v = getattr(card, attr, "")
                 if isinstance(v, (list, tuple)):
                     v = "、".join(str(x) for x in v if str(x).strip())
@@ -780,10 +932,10 @@ def write_chapter(project, store, chapter_no, scene_focus, direction, inferences
         fmt_story(project),
         "【主AI管理笔记（剧情压缩卷）】%s" % ((project.story_summary or "").strip() or "（暂无）"),
     ]
-    # v1.66（与 PC v1.92 同源）正文AI前文脉络：开放伏笔台账（含咋埋的）+ 出场角色立场动机行为
-    _prior_block = _writer_prior_context(project, store, chapter_no, inferences)
-    if _prior_block:
-        lines.append(_prior_block)
+    # v1.92 正文AI前文脉络：开放伏笔台账（含咋埋的）+ 出场角色立场动机行为
+    prior_block = _writer_prior_context(project, store, chapter_no, inferences)
+    if prior_block:
+        lines.append(prior_block)
     lines += [
         lore_text,
         beats_block,
@@ -926,8 +1078,8 @@ def write_chapter(project, store, chapter_no, scene_focus, direction, inferences
         % (_len_text, int(target_chars / 5), golden_bullet, handover_bullet,
            lore_bullet, chapter_no)
     )
-    # v1.01 章节标题风格引导：贴合本书类型与书名气质；v1.62（与 PC v1.88 同源）支持
-    # 用户自定义命名规则（story_title_rules，填了最高优先——不硬禁任何句式，
+    # v1.01 章节标题风格引导：贴合本书类型与书名气质；v1.88 支持用户自定义命名规则
+    # （story_title_rules，项目页「文风参考」可填，填了最高优先——不硬禁任何句式，
     # 只要求「合适、贴内容、合类型」）
     _trules = ((project.story_title_rules or "") if project is not None else "").strip()
     if _trules:
@@ -943,7 +1095,7 @@ def write_chapter(project, store, chapter_no, scene_focus, direction, inferences
 
 
 def retitle_chapters(project, store, start, end, with_content=True):
-    """批量重新设计章节标题（v1.01；v1.59 默认读**完整正文**）：按本书类型与书名气质取题，
+    """批量重新设计章节标题（v1.01；v1.82 默认读**完整正文**）：按本书类型与书名气质取题，
     逐章**依据该章完整正文取题**（开头铺垫+中间冲突+结尾钩子全看到，杜绝只看开头被带偏、
     杜绝脱离内容瞎取名），也可关闭读正文只按梗概/原标题（省 token，取题精度下降）。
     只改标题不碰正文。返回 (sys, user)。"""
@@ -966,8 +1118,8 @@ def retitle_chapters(project, store, start, end, with_content=True):
                     "excerpt": excerpt})
     if not chs:
         raise ValueError("区间内没有可重命名的章节。")
-    # v1.62（与 PC v1.88 同源）章节标题命名规则：内置通用默认（不硬禁任何句式，
-    # 只要求合适/贴内容/合类型）+ 用户自定义（story_title_rules，填写后最高优先）
+    # v1.88 章节标题命名规则：内置通用默认（不硬禁任何句式，只要求合适/贴内容/合类型）
+    # + 用户自定义（story_title_rules，项目页「文风参考」填写后最高优先）
     _trules = ((project.story_title_rules or "") if project is not None else "").strip()
     if _trules:
         _title_guide = [
@@ -1111,8 +1263,12 @@ def editor_review(project, store, chapter):
     return sys, user
 
 
-def update_after_chapter(project, store, chapter, open_fs_ids):
-    """主AI战后更新：信息库、角色卡微调、角色状态(阵亡/游历)判断、伏笔回收。"""
+def update_after_chapter(project, store, chapter, open_fs_ids, planned_plants=()):
+    """主AI战后更新：信息库、角色卡微调、角色状态(阵亡/游历)判断、伏笔回收。
+
+    v1.101 新增正文反扫：new_foreshadows（正文AI/作者加戏新冒出的伏笔，登记进账本防丢线）
+    + missed_plants（本章主AI安排的伏笔正文是否写实，未落地则提示）。
+    """
     sys = "你是小说世界的维护引擎。本章正文已定稿，请更新世界状态。"
     extra = (project.story_main_prompt or "").strip()
     if extra:
@@ -1136,13 +1292,31 @@ def update_after_chapter(project, store, chapter, open_fs_ids):
         "   - 更新其信息库 library：**当前场景/处境 scenario**（本章结束后该角色身处何地、处境如何）、"
         "本章经历的事件 events、了解到的新信息 knowledge、可能获知的秘密 secrets、其他备注 notes；\n"
         "   - 若本章事件足以改变该角色**本身**（人设层面），给出 card_updates（只列发生变化的字段，可用: "
-        "personality/goals/values/speech_style/relationships/description 等，"
+        "personality/goals/values/speech_style/relationships/description/plot_arc 等，"
         "description 是综合人设描述——仅当事件从本质上改变了其性格/言行习惯时才重写；"
         "处境变化请写入信息库 scenario，不要写进角色卡）；\n"
+        "   - **人物剧情线（plot_arc）维护（v1.100）**：若本章涉及该角色身上的**未了之事/人物性质伏笔**"
+        "（新埋、推进、变化——如暗怀身孕、身世线索又进一步、临死留言的指向出现新线索），"
+        "把最新状态写进 card_updates.plot_arc（≤200字，写清前因后果与当前进展，如"
+        "『自第12章起暗怀身孕未公开（仅贴身丫鬟知晓），本章显怀，正筹谋离京养胎』）；"
+        "**没有变化或该角色没有人物线就不要给 plot_arc 字段**（避免覆盖旧记录）；\n"
         "   - 判断其世界状态 status：active(存活)/dead(阵亡，给出可信缘故)/traveling(离场游历)；不影响则填 unchanged；\n"
         "2. 角色阵亡或游历会导致信息传递中断——若某角色死亡，其掌握的未及传递信息自然消失或埋为悬念，不必强行解释。\n"
         "3. 检查开放伏笔（id 列表如下），若本章正文已自然回收/回应，列入 foreshadow_resolved。\n"
         "开放伏笔ID：%s\n"
+        "4. **反扫本章正文（v1.101）**——正文里可能埋着主AI没安排的雷，必须把它登记回来：\n"
+        "   - **new_foreshadows（正文新冒出的伏笔）**：通读【本章正文】，找出**账本上没有、本章主AI 也没安排过**"
+        "的新伏笔/新悬念/新隐患——即正文AI 或作者加戏埋下的钩子（角色留一句没头没尾的话、出现一件透着蹊跷却"
+        "与主线无关的物件/信件、某个举动明显留有后手等）。判断标准：有留白、有悬念感、读者会惦记『这后面有什么』；"
+        "**纯日常描写/普通对话/氛围铺陈不算**。登记规则沿用伏笔双账本："
+        "事件性质（跨章故事线）给 storyline（线名）+ related_chars（干系人）+ planted_note（在正文哪一幕、"
+        "借什么露出的，≤60字）；人物性质（挂在某角色身上的事）给 target_character（必填）+ planted_note。"
+        "**与账本已有伏笔重复的不报**（文本/线名/含义相同都算）；**本章主AI 安排过且正文写实了的不报**"
+        "（那是正常落地，不是新增）；\n"
+        "   - **missed_plants（本章安排的伏笔没写实）**：核对下列本章主AI 安排的伏笔文本，"
+        "若正文里**完全没有出现、也看不出痕迹**（找不到对应描写），列入 missed 并给一句话原因；"
+        "正文里有迹象就不算漏（不必逐字一致）。\n"
+        "本章主AI 安排的伏笔：%s\n"
         "仅输出 JSON："
         '{"characters":[{"id":"角色ID","card_updates":{...仅人设变化字段...},"status":"active|dead|traveling|unchanged",'
         '"status_reason":"状态变化原因(unchanged则空)",'
@@ -1150,7 +1324,13 @@ def update_after_chapter(project, store, chapter, open_fs_ids):
         '"events":[{"chapter":本章章号,"event":"经历的事","impact":"影响"}],'
         '"knowledge":[{"chapter":本章章号,"info":"了解到的新信息"}],'
         '"secrets":[...],"notes":"其他备注"}}],'
-        '"foreshadow_resolved":["开放伏笔id"]}' % "、".join(open_fs_ids)
+        '"foreshadow_resolved":["开放伏笔id"],'
+        '"new_foreshadows":[{"text":"正文新出现的伏笔内容","f_category":"event|character(可空,自动推断)",'
+        '"storyline":"(事件性质)线名,可空","related_chars":["干系人,可空"],'
+        '"target_character":"依托角色名或空","planted_note":"在正文哪一幕/借什么露出的(≤60字)"}](无则空数组),'
+        '"missed_plants":["本章安排但正文没写实的伏笔文本"](无则空数组)}'
+        % ("、".join(open_fs_ids),
+           "；".join(planned_plants) if planned_plants else "（本章无安排，跳过核对）")
     )
     return sys, "\n".join(user_lines)
 
@@ -1191,6 +1371,8 @@ def compress_summary(project, store, recent=8):
         fmt_story(project),
         "【当前主AI管理笔记（旧版，可被覆盖重写；其中仍然有效的前情与信息必须保留，不得丢弃）】%s" % (
             (project.story_summary or "").strip() or "（无）"),
+        "【当前主AI笔记·后续剧情灵感（旧版；其中仍值得展开的方向必须保留，不得因本次重写丢失）】%s" % (
+            ("；".join(str(i) for i in (getattr(project, "story_ideas", None) or []))) or "（无）"),
         "【近期章节摘要（最近 %d 章）】" % recent,
     ]
     for i in indices[-recent:]:
@@ -1215,13 +1397,18 @@ def compress_summary(project, store, recent=8):
         "保证用户单看这份笔记就能还原前面发生过的故事；\n"
         "   - 人物现状与立场动机：各出场角色现在身处何地、状态如何、与主角/势力的关系到了哪一步，"
         "以及**当前立场/动机/对主角的态度**（每人一两句，写清事实而非空话；正文AI会按此写言行）；\n"
-        "   - 伏笔状态：哪些已埋/待回收——**每条写清：伏笔内容 + 埋于第几章 + 当时怎么埋的"
-        "（依托的物件/场景/动作/台词要点，供正文AI后续写实与回收时呼应，也供作者回顾）**；\n"
+        "   - 伏笔状态（v1.100 双账本）：哪些已埋/待回收——"
+        "**事件性质伏笔（故事线）按线详录**：每条线写清 线名 + 埋于第几章 + 当时怎么埋的 + "
+        "当前推进到哪一步 + 下一步应在哪里回收/展开（主AI靠这条持续展开不丢线）；"
+        "**人物性质伏笔只写角色名+一句话**（详细前因后果存在该角色卡 plot_arc，此处简略即可、不重复占篇幅）；\n"
         "   - 重要承诺与未兑现设定（别丢）。\n"
         "2. 重要角色档案（key_characters 数组，每个一条：name + info 一句话）：\n"
         "   - 把**当前仍在剧情前线、后续很可能再出场**的角色挑出来（一般 5-15 个），"
         "info 写清：ta 现在身处何地、状态如何、与主角/势力的关系到了哪一步、"
         "接下来可能的动向或未解的心结（如：『身在铁砧城，暗查城主府账册，与主角关系回暖但仍有戒心』）；\n"
+        "   - 每人再给 arc 字段（**该角色身上的未了之事/人物性质伏笔当前状态**，≤80字，"
+        "如『暗怀身孕未公开（第12章起），正筹谋离京养胎』『第21章临死留言\"后面还有人\"，所指未明』；"
+        "没有就写空字符串）——系统会把 arc 回写进对应角色卡 plot_arc，供后续章节主AI直接查阅；\n"
         "   - 只列重要角色，NPC/一次性龙套不列；信息要具体可执行，供主AI后续决断直接使用；\n"
         "3. 后续剧情灵感（ideas 数组，每条一句话）：\n"
         "   - 把值得展开的剧情方向写下来：待回收伏笔的展开方式、悬而未决的冲突、"
@@ -1235,7 +1422,8 @@ def compress_summary(project, store, recent=8):
         "（每条一行「- 内容」）：重要设定确认、关键伏笔落定、联网搜到的可复用灵感/剧情设计参考、"
         "角色的长期目标与秘密备忘等；若无新增内容则返回空字符串。\n"
         "仅输出 JSON：{\"note\":\"管理笔记正文(800-1500字，按剧情脉络归纳前文)\","
-        "\"key_characters\":[{\"name\":\"角色名\",\"info\":\"现状/动向一句话\"}],"
+        "\"key_characters\":[{\"name\":\"角色名\",\"info\":\"现状/动向一句话\","
+        "\"arc\":\"该角色身上的未了之事/人物伏笔当前状态(≤80字,无则空串)\"}],"
         "\"ideas\":[\"后续剧情灵感1\",\"灵感2\"],"
         "\"archive\":[{\"id\":\"角色ID\",\"reason\":\"一句话理由\"}],"
         "\"knowledge\":\"知识库新增条目(每行一条,无则留空)\"}"
@@ -1248,8 +1436,8 @@ def plan_story_ai(opening, user_notes, total_chapters_constraint="",
     """AI 按用户想法起草故事设定（三块可勾选：剧情/世界观/特殊规则）。
 
     返回 JSON dict，键取 targets 中的项：story/world/rules。
-    v1.69（与 PC v1.95 同源）结构硬性规范化：不预设题材、不强制宏大、不限定篇幅（具体类型与格局由
-    用户想法决定），但**输出结构硬性规范**——与拆书工坊成果同构（主线总览→卷/事件细纲→人物/伏笔池），
+    v1.95 结构硬性规范化：不预设题材、不强制宏大、不限定篇幅（具体类型与格局由用户想法决定），
+    但**输出结构硬性规范**——与拆书工坊成果同构（主线总览→卷/事件细纲→人物/伏笔池），
     栏名必须全出现（无则写『栏名：无』）、禁空洞词；是否提供主AI提示词/拆书文档不影响该结构。
     """
     sys = (
@@ -1261,7 +1449,11 @@ def plan_story_ai(opening, user_notes, total_chapters_constraint="",
         "【硬性总则】三块都按规范结构输出：每个「栏名：」都必须出现，栏里确实没内容就写"
         "『栏名：无』，但**不允许省略任何栏名**；禁止用『氛围感/张力/精彩/细腻』这类不可执行的"
         "空洞词，用动词+对象、写明怎么推进的表述（组织方式对齐拆书工坊的成果：主线总览→卷/事件"
-        "细纲→人物/伏笔池，让主AI 能照着推进剧情）。"
+        "细纲→人物/伏笔池，让主AI 能照着推进剧情）。\n"
+        "**表达形式（v1.97 硬性）**：三块一律用**给人看的自然语言文段**输出——就用普通中文句子、"
+        "换行和『·』『①』这类自然标记分条，**严禁输出任何编程式语法**：不允许大括号{}、方括号[]、"
+        "冒号引号键值对（'键': '值'）或 Python/JSON 字典数组写法；卷/事件/栏里的条目直接写中文，"
+        "每卷或每事件一行/一段，读起来像一本书的设计稿，而不是数据结构。"
     )
     part_notes = []
     if "story" in targets:
@@ -1304,14 +1496,64 @@ def plan_story_ai(opening, user_notes, total_chapters_constraint="",
     return sys, user
 
 
+def revise_story_ai(project, store, targets, user_req, current, constraint=""):
+    """v1.98 故事设定页「AI 辅助·按我的要求修改」：在现有三栏基础上，按用户修改要求
+    修订剧情/世界观/特殊规则（只改要求的部分，其余尽量原样保留），输出完整修订版。
+
+    与 plan_story_ai 同一套硬性规范（栏名必在/无则写『栏名：无』/自然语言禁编程式语法/禁空洞词），
+    且**直接受主AI全局提示词（story_main_prompt）与拆书风格参考影响**——设计/修改剧情本就是
+    主AI的工作。返回 (sys, user)；调用方 llm.chat_json 解析 {"story","world","rules"}。
+    """
+    require = (user_req or "").strip() or "（未给出具体修改要求——请按现有设定与主AI全局要求做整体完善，结构必须保持完整）"
+    _secs = []
+    if "story" in targets:
+        _secs.append(
+            "「story」剧情发展修订版：按四段结构输出——一、主线总判；二、卷划分（每卷含卷题、"
+            "起止章号、本卷剧情任务，章号覆盖全书总章数）；三、卷内主要事件（事件名(章数范围)+一句话推进）；"
+            "四、全书结尾方向。本块约400~900字。")
+    if "world" in targets:
+        _secs.append(
+            "「world」世界观修订版：按五栏输出——①世界背景 ②地理/大概念 ③势力格局 ④力量体系 ⑤种族文明；"
+            "本块约300~800字。")
+    if "rules" in targets:
+        _secs.append(
+            "「rules」特殊规则修订版：按三栏输出——①金手指/主角特殊能力 ②禁忌 ③叙事偏好；本块约200~600字。")
+    sys = (
+        main_system(project)
+        + "\n现在执行任务：按用户给出的修改要求，修订本项目的【剧情发展 / 世界观 / 特殊规则】设定。"
+        "这是设定修订任务，不是章节正文写作。"
+    )
+    _extra = (getattr(project, "story_main_prompt", None) or "").strip()
+    if _extra:
+        sys += "\n【用户对主AI的全局要求（最高优先，必须遵守——修订后的设定要与它一致）】\n%s" % _extra
+    user = "\n\n".join([
+        "【现有剧情发展】%s" % ((current or {}).get("story") or "（无）"),
+        "【现有世界观】%s" % ((current or {}).get("world") or "（无）"),
+        "【现有特殊规则】%s" % ((current or {}).get("rules") or "（无）"),
+        "【用户的修改要求】%s" % require,
+        "【章数约束】%s" % (constraint or "（无，保持现有章数安排）"),
+        "【修改原则（硬性）】只按用户要求修改对应栏：用户要求改哪些内容就改哪些，"
+        "**没被要求改的段落尽量原样保留**（只做必要的衔接与一致性调整）；不推翻重写、"
+        "不擅自扩充与要求无关的设定；修订后的三栏彼此自洽、并与主AI全局要求一致。",
+        "【输出规范（硬性）】被勾选输出的每一栏都按规范结构书写，栏名必须全部出现，"
+        "某栏确实没有内容就写『栏名：无』；一律用**给人看的自然语言文段**（普通中文、换行、"
+        "『·』『①』分条），**严禁输出任何编程式语法**（大括号{}、方括号[]、引号键值对或"
+        "Python/JSON 字典数组写法）；禁空洞词；每栏输出**完整修订版**，不要只写改动点。\n"
+        "%s" % "\n".join(_secs),
+        "仅输出 JSON 对象：{\"story\":\"…\",\"world\":\"…\",\"rules\":\"…\"}"
+        "（只包含被勾选要修订的栏；值为自然语言完整文本；不要输出 JSON 之外的任何说明）。",
+    ])
+    return sys, user
+
+
 def plan_chapters_ai(idea, story="", world="", rules="", author_constraint=""):
     """v1.73 一键成书「AI 自动判断章节数」：让 AI 根据故事想法+三栏设定判断全书合理总章数。
 
     返回 JSON {"chapters": int}（建议值）,由调用方 clamp 到 [1, 3000]。
     提示词要求按题材复杂度/剧情量定篇幅：短篇 20-40、中篇 60-120、长篇 200-500、
     超长篇 800+；不要只按用户有无明确数字——用户已给数字时直接遵循。
-    v1.57（与 PC v1.80 同源）：想法里写了章数要求时（如「不低于120章」）author_constraint
-    就是那条原话，这里把它当硬性约束：不低于/至少 N 章 = 下限，只可上浮不可低于。
+    v1.80：想法里写了章数要求时（如「不低于120章」）author_constraint 就是那条原话，
+    这里把它当硬性约束：不低于/至少 N 章 = 下限，只可上浮不可低于。
     """
     sys = (
         "你是资深小说策划编辑。根据用户的小说想法与已起草的故事设定，判断这本书**全书总共"
@@ -1508,8 +1750,12 @@ def generate_batch_roles(description, project, store):
         pool_text,
         "【角色需求】%s" % (description or "设计 3 个与本卷主线相关的配角"),
         (
-            "把上面的需求拆解成具体角色（数量由需求决定；未指明时 2-8 个）。"
+            "把上面的需求拆解成具体角色（**数量按需求决定且必须给满**：需求里明确写了几个"
+            "（如『ABC 三个角色』）就必须输出几个，缺一不可——本批条数不足会整批不合格重试；"
+            "需求未明确数量时 2-8 个）。"
             "每个角色**形象立体丰满、细节丰富，不要三言两语打发**（酒馆 chara_card_v2 规范）：\n"
+            "- **name 是必填项、必须唯一**：不得与【全量名册】中任何角色同名或近似（会与已有角色"
+            "合并），本批内部也不得重名——重名/缺名都会导致整批不合格被重试；\n"
             "- description 写立体形象（250-450字）：外貌气质（体型/五官/神态/穿着风格）、"
             "性格全貌（核心性格 + 具体行为习惯/口头禅/小动作 + 优缺点与矛盾点 + 隐藏的柔软处）、"
             "说话方式（语气/句式偏好）、日常待人接物——用具体细节立住人物，让正文AI能写出有辨识度的人物；\n"
@@ -1520,8 +1766,7 @@ def generate_batch_roles(description, project, store):
             "- mes_example 给 2-3 组示例对话；system_prompt 写扮演规则（可空）；"
             "post_history_instructions 剧情后置指示（可空）；\n"
             "- tags 给 2-4 个角色标签；character_version 固定 \"main\"；creator_notes 一行设计备注（可空）；\n"
-            "- 角色之间要有辨识度；**每个角色名都必须在【全量名册】中不存在（或明显不同），"
-            "绝不生成与现有角色同名的角色卡，内部也不得重名。**\n"
+            "- 角色之间要有辨识度。\n"
             "仅输出 JSON："
             '{"characters":[{"name":"姓名","role":"身份/职业(可空)","age":"年龄(可空)",'
             '"gender":"性别(可空)","personality":"性格分层描述(100-200字)","traits":["2-4个特质标签"],'

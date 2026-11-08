@@ -23,6 +23,20 @@ DEFAULT_CONFIG = {
     "api_profiles": [
         {"name": "默认配置", "base_url": "https://api.deepseek.com/v1",
          "api_key": "", "model": "deepseek-chat", "role": "all"},
+        # v1.71 从 PC 版同步的常用 API 配置（仅名称/地址/模型；api_key 出于安全不内置——
+        # 生效的 key 请在设置页「拉取模型」后填入并保存；各条模型名可直接用「拉取模型」核对）
+        {"name": "商汤日日新", "base_url": "https://token.sensenova.cn/v1",
+         "api_key": "", "model": "deepseek-v4-flash", "role": "all"},
+        {"name": "本地api", "base_url": "http://192.168.15.1:1234/v1",
+         "api_key": "", "model": "gemma-4-12b-qat-heretic-styletune", "role": "all"},
+        {"name": "本地qwen3.8-flash", "base_url": "http://localhost:8080/v1",
+         "api_key": "", "model": "qwen3.8-flash-next-iq3_xxs", "role": "all"},
+        {"name": "中转站gemini系列", "base_url": "https://wanwanzhou.top/v1",
+         "api_key": "", "model": "gemini-3.8-flash", "role": "all"},
+        {"name": "中转站77625（ds-flash）", "base_url": "https://ly.77625.xyz/v1",
+         "api_key": "", "model": "x-deepseek-v4.1-flash", "role": "all"},
+        {"name": "中转站77625（gemini-3.8-flash）", "base_url": "https://ly.77625.xyz/v1",
+         "api_key": "", "model": "gemini-3.8-flash", "role": "all"},
     ],
     "current_profile": "默认配置",
     "role_profiles": None,      # 用途分工：{"decide": 配置名, "reason": 配置名, "write": 配置名}；None=未设置过（首次从旧 role 字段迁移）

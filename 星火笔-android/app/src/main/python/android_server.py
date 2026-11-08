@@ -515,12 +515,13 @@ def _do_character_ai(d):
         return {"error": "描述不能为空"}
     try:
         data = main_ai.generate_character_ai(desc, project, store)
-        card = main_ai.character_from_data(data, created_by="ai")
+        # v1.73 防重复：走 save_generated_character（同名查重/复用），不裸建同名卡
+        card, lib, created = main_ai.save_generated_character(store, data)
     except Exception as e:
         traceback.print_exc()
         return {"error": "生成失败：%s" % e}
-    store.save_character(card, InfoLibrary(card.id))
-    return {"ok": True, "id": card.id, "name": card.name, "role": card.role}
+    return {"ok": True, "id": card.id, "name": card.name, "role": card.role,
+            "reused": not created}
 
 
 def _do_character_ai_batch(d):
@@ -536,14 +537,17 @@ def _do_character_ai_batch(d):
         traceback.print_exc()
         return {"error": "拆解失败：%s" % e}
     out = []
+    failed = []
     for data in cards_data:
         try:
-            card = main_ai.character_from_data(data, created_by="ai")
-            store.save_character(card, InfoLibrary(card.id))
-            out.append({"id": card.id, "name": card.name, "role": card.role})
-        except Exception:
-            continue
-    return {"ok": True, "created": out}
+            # v1.73 防重复：同名查重/复用；模型本批重复给出已有角色时不再建第二张同名卡
+            card, lib, created = main_ai.save_generated_character(store, data)
+            out.append({"id": card.id, "name": card.name, "role": card.role,
+                        "reused": not created})
+        except Exception as e:
+            failed.append({"name": str(data.get("name") or "?"),
+                           "reason": str(e)[:200]})
+    return {"ok": True, "created": out, "failed": failed}
 
 
 def _do_character_import(d):
@@ -758,7 +762,10 @@ def _do_book_auto(d):
                         title = main_ai.plan_title(idea)
                     except Exception as e:
                         sink("warn", "起书名失败（%s），使用自动书名。" % e)
-                title = (title or "").strip() or "AI 新书"
+                if not (title or "").strip():
+                    # v1.71（与 PC v1.97 同源）不再产出「AI 新书」占位名：想法关键词临时名 + 明确提示
+                    title = main_ai._fallback_title(idea)
+                    sink("warn", "AI 尚未起出合适的书名，已用临时书名《%s》，可随时改名。" % title)
                 sink("info", "书名确定：《%s》" % title)
 
                 # 2) AI 起草三栏设定（剧情/世界观/规则）
@@ -1135,12 +1142,19 @@ def _do_foreshadows(d):
                    "target_char": f.target_char, "status": f.status,
                    "planted_chapter": f.planted_chapter,
                    "resolved_chapter": f.resolved_chapter,
+                   "f_category": f.f_category,          # v1.74 双账本
+                   "storyline": f.storyline,            # v1.74 事件线名
+                   "related_chars": list(f.related_chars or []),  # v1.74 干系人
+                   "next_target": f.next_target,        # v1.74 事件线下一步
                    "overdue": _overdue(f, current_no, threshold)})
     open_n = sum(1 for f in fs if f["status"] == "open")
     resolved_n = sum(1 for f in fs if f["status"] == "resolved")
     overdue_n = sum(1 for f in fs if f["overdue"])
+    line_n = len({(f.get("storyline") or "").strip() for f in fs
+                  if (f.get("storyline") or "").strip()})
     return {"ok": True, "foreshadows": fs,
-            "stats": {"open": open_n, "resolved": resolved_n, "overdue": overdue_n},
+            "stats": {"open": open_n, "resolved": resolved_n, "overdue": overdue_n,
+                      "lines": line_n},
             "threshold": threshold}
 
 
@@ -2720,6 +2734,37 @@ def _do_plan_story(d):
             "rules": str(data.get("rules") or "").strip()}
 
 
+def _do_revise_story(d):
+    """AI 辅助·按我的要求修改三栏（v1.72 镜像 PC 项目页）：以当前三栏为基线，按用户修改
+    要求修订勾选栏——结果只返回前端展示在预览（不写回项目），用户截取满意段落替换后自行保存。
+
+    idea=修改要求；current={story,world,rules} 当前三栏文本；constraint=章数约束；targets 勾选。"""
+    req = str(d.get("idea") or "").strip()
+    constraint = str(d.get("constraint") or "").strip()
+    cur = d.get("current")
+    current = {}
+    if isinstance(cur, dict):
+        current = {k: str(cur.get(k) or "") for k in ("story", "world", "rules")}
+    raw = d.get("targets")
+    targets = tuple(str(x).strip() for x in raw if str(x).strip()) if isinstance(raw, list) else ()
+    targets = tuple(x for x in targets if x in ("story", "world", "rules"))
+    if not targets:
+        return {"error": "请至少勾选一栏要修改的内容"}
+    store, project = _current()
+    if project is None:
+        return {"error": "请先打开一个项目"}
+    try:
+        data = main_ai.revise_story(project, store, targets, req, current, constraint)
+    except Exception as e:
+        traceback.print_exc()
+        return {"error": "AI 修改故事设定失败：%s" % e}
+    if not isinstance(data, dict):
+        data = {}
+    return {"ok": True, "story": str(data.get("story") or "").strip(),
+            "world": str(data.get("world") or "").strip(),
+            "rules": str(data.get("rules") or "").strip()}
+
+
 def _do_retitle(d):
     """批量重设计第 start~end 章标题（任务化，可停止；只改标题，不碰正文与章节顺序）。"""
     store, project = _current()
@@ -3294,6 +3339,7 @@ _ROUTES = {
     "scene_cards_adapt": _do_scene_cards_adapt,
     # ---------- v1.56 项目页：立项 / 重定标题 / 分支 ----------
     "plan_story": _do_plan_story,
+    "revise_story": _do_revise_story,
     "retitle": _do_retitle,
     "branch_list": _do_branch_list,
     "branch_save": _do_branch_save,

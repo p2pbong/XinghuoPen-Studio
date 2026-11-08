@@ -807,20 +807,41 @@ class NovelImporter:
                     store.save_chapter(ch)
 
         # 伏笔台账：先种（卷细纲种子 + 设定合成伏笔池）后收（卷细纲 payoff）
+        # v1.102 双账本登记：分类（event/character）、线名（storyline，若拆书给了）、
+        # 干系人/依托角色（target_character，拆书没给时按文本子串匹配角色名）
         fs = []
 
-        def _plant_fs(text, chapter):
-            if text and text not in {x.text for x in fs}:
-                fs.append(Foreshadow(text, "plant", ""))
-                fs[-1].planted_chapter = int(chapter or 0)
+        def _plant_fs(raw, chapter):
+            text = str(raw.get("text") or "").strip()
+            if not text:
+                return
+            if text in {x.text for x in fs}:
+                return
+            target = str(raw.get("target_character") or "").strip()
+            storyline = str(raw.get("storyline") or "").strip()
+            related = raw.get("related_chars") or []
+            if isinstance(related, str):
+                related = [x.strip() for x in related.replace("，", ",").replace("、", ",").split(",")
+                           if x.strip()]
+            if not target and char_by_name:
+                for nm in char_by_name:
+                    if len(nm) >= 2 and nm in text:
+                        target = nm
+                        break
+            f = Foreshadow(text, "plant", target)
+            f.planted_chapter = int(chapter or 0)
+            f.storyline = storyline
+            f.f_category = ("character" if (target and not storyline) else "event")
+            f.related_chars = [str(x).strip() for x in related if str(x).strip()]
+            fs.append(f)
 
         for v in vol_notes:
             for f in (v.get("foreshadow_seed") or []):
-                if isinstance(f, dict) and str(f.get("text") or "").strip():
-                    _plant_fs(str(f["text"]).strip(), f.get("chapter"))
+                if isinstance(f, dict):
+                    _plant_fs(f, f.get("chapter"))
         for f in (synth.get("foreshadows") or []):
-            if isinstance(f, dict) and str(f.get("text") or "").strip():
-                _plant_fs(str(f["text"]).strip(), f.get("chapter"))
+            if isinstance(f, dict):
+                _plant_fs(f, f.get("chapter"))
         for v in vol_notes:
             for f in (v.get("foreshadow_payoff") or []):
                 if isinstance(f, dict) and str(f.get("text") or "").strip():

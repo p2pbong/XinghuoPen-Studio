@@ -1445,7 +1445,15 @@
       mask(false);
       if (err(r)) return;
       renderCharacters();
-      alert("已创建 " + r.created.length + " 张角色卡。");
+      var msgs = [];
+      var reused = r.created.filter(function (c) { return c.reused; });
+      if (r.created.length) msgs.push("已建卡 " + r.created.length + " 张" +
+          (reused.length ? "（其中 " + reused.length + " 张为已有同名角色复用，未重复建卡）" : ""));
+      if (r.failed && r.failed.length) {
+        msgs.push("失败 " + r.failed.length + " 个：" +
+          r.failed.map(function (f) { return f.name + "（" + f.reason + "）"; }).join("；"));
+      }
+      alert(msgs.length ? msgs.join("\n") : "未生成任何角色，请重试。");
     }).catch(function (e) { mask(false); alert(e); });
   }
 
@@ -1926,6 +1934,7 @@
       var s = r.stats || {};
       document.getElementById("fore-stats").textContent =
         "伏笔统计：待回收 " + s.open + " · 已回收 " + s.resolved + " · ⚠逾期 " + s.overdue +
+        (s.lines ? " · 事件线 " + s.lines + " 条" : "") +
         "（阈值 " + r.threshold + " 章）　" + "回收率 " +
         (s.open + s.resolved ? Math.round(s.resolved * 100 / (s.open + s.resolved)) : 0) + "%";
       var el = document.getElementById("fore-list");
@@ -1938,13 +1947,22 @@
       r.foreshadows.forEach(function (f) {
         var tag = f.overdue ? "over" : (f.status === "resolved" ? "done" : "open");
         var tname = f.overdue ? "⚠逾期" : (f.status === "resolved" ? "已回收" : "待回收");
+        // v1.74 双账本标注：事件线带线名、人物伏笔标[人物]
+        var pre = "";
+        if (f.storyline) pre = "[事件线·" + f.storyline + "] ";
+        else if (f.f_category === "character") pre = "[人物] ";
+        else if (f.f_category === "event") pre = "[事件] ";
+        var rel = (f.related_chars && f.related_chars.length)
+          ? f.related_chars.join("、") : (f.target_char || "");
         var row = document.createElement("div");
         row.className = "fore-item";
         row.innerHTML = '<label class="chk"><input type="checkbox" class="fore-cb" value="' + f.id + '">' +
-          '<span><span class="tag ' + tag + '">' + tname + "</span>" + esc(f.text) +
+          '<span><span class="tag ' + tag + '">' + tname + "</span>" + esc(pre + f.text) +
           "<br><span class='dim'>埋设于第 " + f.planted_chapter + " 章" +
           (f.resolved_chapter ? " · 回收于第 " + f.resolved_chapter + " 章" : "") +
-          " · 类型 " + esc(f.f_type) + "</span></span></label>";
+          " · 类型 " + esc(f.f_type) +
+          (f.next_target ? " · 下一步 " + esc(f.next_target) : "") +
+          (rel ? " · 干系人 " + esc(rel) : "") + "</span></span></label>";
         el.appendChild(row);
         sel.push(f);
       });
@@ -2049,34 +2067,39 @@
     });
   }
 
-  // AI 辅助起草故事设定（PC 项目页「AI 生成所选」）
+  // AI 辅助·按我的要求修改故事设定（PC 项目页「AI 按我的要求修改」；结果只进预览，不改动原栏）
   function planStoryAI() {
     var idea = (document.getElementById("ps-idea").value || "").trim();
-    if (!idea) { alert("请先描述你想写什么小说。"); return; }
+    if (!idea) { alert("请先描述你想怎么改（也可留空由 AI 按现有基调整体完善）。"); return; }
     var targets = [];
     if (document.getElementById("ps-story").checked) targets.push("story");
     if (document.getElementById("ps-world").checked) targets.push("world");
     if (document.getElementById("ps-rules").checked) targets.push("rules");
-    if (!targets.length) { alert("请至少勾选一栏要生成的内容。"); return; }
-    var notes = "【故事简介】\n" + document.getElementById("p-brief").value +
-      "\n\n【世界观】\n" + document.getElementById("p-world").value +
-      "\n\n【特殊规则】\n" + document.getElementById("p-rules").value;
+    if (!targets.length) { alert("请至少勾选一栏要修改的内容。"); return; }
+    var current = {
+      story: document.getElementById("p-brief").value,
+      world: document.getElementById("p-world").value,
+      rules: document.getElementById("p-rules").value
+    };
     var msg = document.getElementById("ps-msg");
-    msg.textContent = "AI 起草中…（已填内容作为续写基础）";
+    var preview = document.getElementById("ps-preview");
+    msg.textContent = "AI 修改中…";
     document.getElementById("ps-ai-btn").disabled = true;
-    api("plan_story", {
+    api("revise_story", {
       idea: idea,
-      notes: notes,
+      current: current,
       constraint: document.getElementById("ps-constraint").value,
       targets: targets
     }, "POST").then(function (r) {
       mask(false);
       document.getElementById("ps-ai-btn").disabled = false;
       if (err(r)) { msg.textContent = ""; return; }
-      if (targets.indexOf("story") >= 0 && r.story) document.getElementById("p-brief").value = r.story;
-      if (targets.indexOf("world") >= 0 && r.world) document.getElementById("p-world").value = r.world;
-      if (targets.indexOf("rules") >= 0 && r.rules) document.getElementById("p-rules").value = r.rules;
-      msg.textContent = "✓ 已起草并填入上面三栏——确认无误后点「保存故事设定」。";
+      var pieces = [];
+      if (targets.indexOf("story") >= 0 && r.story) pieces.push("【修改后的剧情】\n" + r.story);
+      if (targets.indexOf("world") >= 0 && r.world) pieces.push("【修改后的世界观】\n" + r.world);
+      if (targets.indexOf("rules") >= 0 && r.rules) pieces.push("【修改后的特殊规则】\n" + r.rules);
+      preview.value = pieces.join("\n\n");
+      msg.textContent = "✓ 修改稿已生成（只显示在预览，未改动上面三栏）——截取满意段落替换对应栏后点「保存故事设定」。";
     }).catch(function (e) {
       document.getElementById("ps-ai-btn").disabled = false;
       msg.textContent = "✖ " + e;

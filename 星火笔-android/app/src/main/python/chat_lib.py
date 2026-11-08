@@ -385,15 +385,24 @@ def build_project_context(store, project):
             pass
         try:
             fs = store.load_foreshadows()
-            rows = []
-            for f in fs[:40]:
-                if f.f_type != "plant":
-                    continue
-                st = "已回收" if f.status == "resolved" else (
-                    "埋设@第%s章" % f.planted_chapter if f.planted_chapter else "未定章")
-                rows.append("- %s（%s）" % (f.text[:120], st))
-            if rows:
-                parts.append("【伏笔台账】\n%s" % "\n".join(rows))
+            # v1.102 复用双账本视图（事件线分组/干系人/逾期/下一步），不再手工拼旧单行格式
+            try:
+                import prompts as prompts_mod
+                _cur = 1
+                _wc = getattr(project, "written_chapters", None)
+                if callable(_wc):
+                    try:
+                        _cur = int(_wc())
+                    except Exception:
+                        _cur = 1
+                block = prompts_mod.open_foreshadows_text(fs, current_no=_cur)
+            except Exception:
+                block = ""
+            if block and "（当前无开放伏笔）" not in block:
+                parts.append("【伏笔台账】\n%s" % block)
+            else:
+                n_done = sum(1 for f in fs if f.status == "resolved")
+                parts.append("【伏笔台账】（当前无开放伏笔；已回收 %d 条）" % n_done)
         except Exception:
             pass
     if project.story_break_style:
