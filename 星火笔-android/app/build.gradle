@@ -1,0 +1,67 @@
+// 星火笔·安卓版 app 模块：Chaquopy 嵌入 Python（复用桌面端 RP 引擎）+ WebView 前端
+plugins {
+    id 'com.android.application'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'com.xinghuobi.novel'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.xinghuobi.novel"
+        minSdk 24
+        targetSdk 34
+        versionCode 184
+        versionName "1.83"
+
+        // 主流 Android 设备 + 模拟器；Chaquopy 17 的 Python 解释器为预编译（无需 NDK）
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+    }
+
+    signingConfigs {
+        release {
+            // 签名信息来自 app/keystore.properties（scripts/make_release_keystore.bat 自动生成）
+            def props = new Properties()
+            def pf = rootProject.file('app/keystore.properties')
+            if (pf.exists()) {
+                props.load(new FileInputStream(pf))
+            }
+            def sf = (props.getProperty('storeFile') ?: 'app/release.keystore').trim()
+            def sp = (props.getProperty('storePassword') ?: 'xinghuobi2026').trim()
+            def al = (props.getProperty('keyAlias') ?: 'xinghuobi').trim()
+            def kp = (props.getProperty('keyPassword') ?: 'xinghuobi2026').trim()
+            println "SIGN-DEBUG sf=[" + sf + "] sp=[" + sp + "] alias=[" + al + "] kp=[" + kp + "]"
+            storeFile rootProject.file(sf)
+            storePassword sp
+            keyAlias al
+            keyPassword kp
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+        debug {
+            // 默认使用 Android 调试签名（debug.keystore），无需额外配置
+        }
+    }
+}
+
+// Chaquopy 17 新 DSL（Groovy）：Python 源码默认取 src/main/python；pip 安装 requests
+chaquopy {
+    defaultConfig {
+        pip {
+            install "requests"
+        }
+    }
+}
+
+dependencies {
+    // FileProvider（导出 zip 系统分享）
+    implementation "androidx.core:core:1.13.1"
+}
