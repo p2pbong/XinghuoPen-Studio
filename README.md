@@ -1,101 +1,200 @@
-# 星火笔 XinghuoPen ✒️ AI 小说写作室 · AI Novel Writing Studio
+# 星火笔 XinghuoPen ✒️ AI 小说写作室
 
-> **中文：** 你想当导演，AI 分工当编剧、演员和写手。
-> **English:** You are the director; AI plays the screenwriters, actors, and writers.
->
-> 「主AI决断 + 角色推理 + 正文写作 + 审查验收」全自动自推理管线 / A multi-agent AI novel-writing pipeline:
-> **Main-AI decides → Character-AI reasons → Writer-AI writes → Reviewer-AI verifies**.
-> 电脑端 + 安卓端双端开源，数据完全本地化。 / Open source on both Windows (portable) and Android; all data stays local.
+> 你当导演，AI 分工当编剧、演员和写手。
+> You are the director; AI plays screenwriters, actors, and writers.
 
----
+**星火笔**是一个本地运行的 AI 长篇小说写作工具：主AI负责剧情设计与节奏，角色AI替每个人物独立推理，
+正文AI把事件写成文章，审查AI按人设/逻辑/文风验收。电脑端（Windows 免安装）与安卓端双端可用，
+项目、章节、角色卡、伏笔与 API Key 全部保存在本机。
 
-## 它解决什么问题 / What it solves
+**XinghuoPen** is a local-first AI novel-writing studio. A Main-AI designs plot and pacing,
+Character-AIs reason for each cast member, a Writer-AI turns the beats into prose, and a
+Reviewer-AI checks character consistency, logic and style. Available on Windows (portable) and Android;
+all project data and API keys stay on your device.
 
-写长篇小说最累的不是打字，而是**剧情线**——伏笔下章忘了收、人物OOC、剧情失控、满屏 AI 腔。
-Writing a long novel is hard not because of typing, but because of everything your brain has to track —
-unfired Chekhov guns, characters going OOC, plots spiraling out of control, and AI-cliché prose.
-
-星火笔把这些拆给**分工明确的 AI 代理**，你当导演只管改：
-XinghuoPen splits it into role-specialized AI agents — you just direct:
-
-| 代理 Agent | 职责 Role |
-|---|---|
-| 🧠 主AI / Main AI | 剧情节奏与世界观一致性 / pacing & world consistency |
-| 🎭 角色AI / Character AI | 替每个角色独立推理"TA 此刻会怎么想怎么做" / reasons for each character |
-| ✍️ 正文AI / Writer AI | 把推理结果写成文章 / turns reasoning into prose |
-| 🔍 审查AI / Reviewer AI | 人设/逻辑/文风/禁词验收 / verifies character-logic, style, banned words |
-
----
-
-## ✨ 特色功能 / Features
-
-| 功能 Feature | 说明 Description |
-|---|---|
-| 🧠 自推理管线 / Self-reasoning pipeline | 主AI决断→角色推理→正文写作→审查验收，自动或半自动 / decide → reason → write → verify |
-| ⚡ 全自动连写 / Full-auto writing | 审过一章自动写下一章，停止立即生效 / one chapter done, next starts; stop takes effect at once |
-| ✍️ 一键成书 / One-click novel | 一句话想法→自动起名/立设定/建角色→开写；支持 AI 自动判断章节数 / a single sentence of idea → auto title/settings/characters → start; **AI-estimated chapter count** |
-| 📥 小说导入成项目 / Import txt as project | 已有 txt（未完结的尤其合适）完整还原：拆书→建卡→入库→续写，断点续传 / rebuild an unfinished novel into a writable project, resume-ready |
-| 🪄 去AI味·写后校对 / De-AI-ify & proofread | 一键清 AI 腔；正文完稿后按文风规则先校一遍 / clean clichés; proofread before review |
-| 🎨 文风校对工坊 / Style workshop | A提取→B生成→C评分→D优化 多轮迭代，向参考原文靠齐 / extract→generate→score→optimize, iteratively |
-| 📚 拆书工坊 / Book-breaking workshop | 几千章长篇小说拆成设计细纲（≤5万字），学技法不抄情节 / break novels into design outlines — techniques, not plots |
-| 👥 角色体系 / Character system | 角色卡 + 主AI专属信息库（防剧透）；批量建档、酒馆卡互换 / cards + Main-AI-only KB (anti-spoiler); batch & SillyTavern interchange |
-| 💬 AI 对话 / AI chat | 多话题；读项目设定/联网搜索开关；消息可编辑/重生成/续写/导出 / multi-topic; project-context & web-search toggles; message editing |
-| 📖 故事档案 / Story archives | 时间线、伏笔台账、管理笔记、知识库——越长越不乱 / timeline, foreshadowing, notes, KB |
-| 🎴 情景规则卡 / Scene rule cards | 高频场景写成"写法圣经"，主AI每章自动选卡注入 / per-scene style bibles auto-injected |
-| 🌸🌿🌙 三套主题 / 3 themes | 樱粉/薄荷/二次元夜，运行时切换，只换皮肤不改功能 / switchable themes, colors only |
-
----
-
-## 🚀 快速开始 / Quick Start
-
-**Windows（免安装 / portable）**
-1. 下载 `XinghuoPen-PC-v1.77-Portable.zip` 并解压 / download & extract;
-2. 双击 `start.bat`（无黑窗直接出 UI）/ double-click `start.bat`;
-3. 「设置」填入任意 OpenAI 兼容 API（DeepSeek/Kimi/通义/本地 LM Studio/llama.cpp）/ add any OpenAI-compatible API in Settings;
-4. 「项目」→ 新建 / 一键成书，开始写 / create a project or one-click novel.
-
-**Android**
-安装 `XinghuoPen-Android-v1.49.apk`（Android 7.0+），数据仅存本机；🌐 联网搜索需网络，其余离线可用。
-Install the APK; data stays on-device; only web-search needs network.
-
----
-
-## 🏗️ 从源码构建 / Build from source
-
-```bash
-# PC
-cd 星火笔
-pip install -r requirements.txt
-python src/main.py            # 或双击 start.bat / or double-click start.bat
-
-# Android (Android Studio / Gradle)
-cd 星火笔-android
-# 自建 keystore 后 ./gradlew assembleRelease   / generate your own keystore first
-# Chaquopy 17 预编译 Python（无需 NDK）minSdk 24 / targetSdk 34
+```
+想法 / 大纲
+   ↓
+🧠 主AI 决断（出场角色 · 场景焦点 · 本章走向 · 伏笔/笔记）
+   ↓
+🎭 角色AI 推理（每个角色此刻会怎么想、怎么做）
+   ↓
+✍️ 正文AI 写作（把事件写成正文；可参考同类事件范例的「讲法」）
+   ↓
+🔍 审查AI 验收（人设 OOC / 逻辑 / 节奏 / 禁词）→ 不过则按意见重写
+   ↓
+📚 战后更新（伏笔台账 · 角色卡 · 管理笔记 · 知识库 · 笔记库索引）
 ```
 
-## 🔒 数据与隐私 / Data & Privacy
+---
 
-项目、章节、角色卡、伏笔台账、拆书文档、预设**全部存本机/App 私有目录**，API Key 只存本地；本仓库发布包均为**无痕迹版本**（无用户数据/项目/API Key/签名密钥）。
-All data stays local; release packages here are **trace-free** — no user data, projects, API keys, or signing keys.
+## 本版亮点（v1.138 / 安卓 v1.112）
+
+- **事件范例库（接替旧情景卡）**：按「完整事件」管理写作范例，写章时按本章事件自动挑 1~2 条注入正文AI。
+  - **图书分类**：A 战斗冲突 / B 言语交锋 / C 成长突破 / D 情感关系 / E 其他，二级到 A1 兵刃对决、B1 谈判对峙……
+  - **素材库与案例库分离**：整本小说丢进「素材库（未整理）」，不参与写章；「AI 划分」按完整事件判界、原文切片，
+    勾选后才进已整理案例；已整理没有匹配时会从素材截取相关段落参考。
+  - **AI 分类整理**：按分类规则归类、起一句话标题、标出残缺片段（只标记不删），可指定单独 API。
+  - **学的是讲法，不是模板**：范例只示范「同一件事怎样讲更好」——视角与信息、节奏、细节取舍、情绪外化、收束；
+    不要求照搬情节或道具，只禁止照抄句子与专名。
+  - 支持 JSON/TXT/MD 单键导入、按扩展名导出、只看碎片、随手整理；库里实在没有时可联网检索（抓不到正文则不注入）。
+- **主AI笔记库（生成页第三个页签）**：结构化索引（主线/支线/伏笔锚点/势力/地点/物品/规则/未解问题），
+  补角色卡与伏笔台账记不下的东西；每章规划时读取，每 N 章整份重写并删掉已完结/过时条目，随项目快照保存。
+- **主AI知识库治理**：只允许长期设定/规则/称谓/未收伏笔锚点，自动去重限长；压缩时整份重写，
+  不再每章无脑追加；故事档案页可手动编辑或一键「AI 整理」。
+- **正文AI → 主AI 写作反馈**：每章写完自评「事件是否写充分」，列出没写够的环节与后续诉求；
+  主AI在下一章规划/临时细纲中决定采纳或拒绝并说明安排。
+- **其他**：AI 对话不设默认提示词；书名不再 12 字截断；一键成书按剧情批量建角色（4~8、不少于 3）；
+  正文AI拿到本章人物完整档案与物品/隐秘信息；双端同步。
+
+> 完整更新记录见 [`星火笔/README.md`](星火笔/README.md)（开发日志）。
 
 ---
 
-## 📌 开发者注 / A Note from the Developer
+## 核心能力
 
-本项目开发者是**中国人**——源码、注释、界面以中文为主。
-The developer of this project is **Chinese** — source code, comments and UI are primarily in Chinese.
+### 写作管线
+| 能力 | 说明 |
+|---|---|
+| 自推理管线 | 主AI决断 → 角色推理 → 正文写作 → 审查验收，自动/半自动可切 |
+| 全自动连写 | 审过一章自动下一章；支持「写到第 M 章停」，停止立即生效 |
+| 临时细纲（活大纲） | 主AI自由把控「已写章节往后 N 章」的详细规划；可手动粘贴/编辑、锁定区间、按提示词调整 |
+| 一键成书 | 一句话想法 → 起名/世界观/特殊规则/角色 → 直接开写；可让 AI 判断章节数 |
+| 小说导入成项目 | 已有 txt 完整还原为可续写项目：拆书 → 建卡 → 入库，断点续传 |
+| 写后校对 / 去AI味 | 正文完稿后按文风规则先校一遍；一键清 AI 腔 |
 
-如果你需要英文版本，推荐**自行通过 vibe coding（AI 辅助改代码）修改**；
-本项目的任何功能都可以自由修改、改进、扩展。如果你愿意，也欢迎把改好的版本分享回来。
-If you need an English version, it is recommended that you **modify it yourself through vibe coding**
-(any AI-assisted editing tool). The project is fully open source — you are welcome to change,
-improve, or extend **any feature**. Contributions back are appreciated.
+### 设定与记忆
+| 能力 | 说明 |
+|---|---|
+| 角色体系 | 角色卡 + 主AI专属信息库（防剧透）；批量建档、酒馆 spec_v2 卡互换、废弃角色库 |
+| 伏笔双账本 | 事件线进台账、人物线进角色卡；埋设/回收状态与章号可查 |
+| 管理笔记 | 主AI的剧情压缩卷：前情、角色现状、伏笔状态、未兑现承诺 |
+| 主AI笔记库 | 结构化索引，补角色卡/台账记不下的势力、地点、物品、规则、未解问题 |
+| 主AI知识库 | 只存长期设定与伏笔锚点；自动去重、限长、周期整份重写 |
+| 世界快照 | 每章存档角色/信息库/伏笔/笔记/索引，重写或回滚章节可恢复 |
+
+### 参考与学习
+| 能力 | 说明 |
+|---|---|
+| 事件范例库 | 完整事件范例，写章时按事件类型匹配注入；图书分类、素材库、AI 划分/分类、可选 API |
+| 拆书工坊 | 几千章长篇拆成设计细纲（≤5 万字），学技法不抄情节 |
+| 文风校对工坊 | A 提取 → B 生成 → C 评分 → D 优化，多轮迭代向参考原文靠齐 |
+| 参考文风 / 风格要点 | 项目级文风样本与可执行风格规则，与事件范例分工明确 |
+
+### 工具与体验
+| 能力 | 说明 |
+|---|---|
+| AI 对话 | 多话题、附件、联网开关；消息可编辑/重生成/续写/导出；不设默认提示词 |
+| 章节管理 | 删除/交换/统计、正文导出（txt/epub/分章）、阅读模式 |
+| 双端 | Windows 免安装（内置 Python 环境）+ Android APK，功能同源 |
+| 四套主题 | 樱粉 / 薄荷 / 二次元夜 / 静谧石墨，运行时切换，只换皮肤 |
+| 多 API 与分工 | 每类任务可选不同配置与思考强度；事件划分/分类也能单独指定 |
 
 ---
 
-## ⚖️ 许可与免责 / License & Disclaimer
+## 快速开始
 
-个人开发作品，开源仅供**学习交流**；产出的小说版权归创作者本人；默认不附带担保，许可证由发布者决定。
-A personal project, open-sourced for **learning and communication**; produced novels belong to their creators;
-no warranty implied; the repository license is decided by the publisher.
+### Windows（免安装）
+1. 下载并解压 `XinghuoPen-PC-v1.138-Portable.zip`；
+2. 双击 `start.bat`；
+3. 打开「设置」，添加任意 OpenAI 兼容 API（DeepSeek、Kimi、通义、商汤、本地 LM Studio / llama.cpp 等）；
+4. 「项目」→ 新建项目或「一键成书」→ 开始写。
+
+### Android
+1. 安装 `XinghuoPen-Android-v1.112.apk`（Android 7.0+）；
+2. 首次进入「设置」填 API；
+3. 数据仅存 App 私有目录；只有联网搜索需要网络，其余离线可用。
+
+### 第一次使用的建议顺序
+1. **设置 → API**：先配一套通用配置；若用推理型模型，JSON 环节把「思考」设为关闭/低，速度差别很大。
+2. **项目**：填书名、剧情、世界观、特殊规则（或一键成书让 AI 起草）。
+3. **角色**：至少建主角/女主/主要对手；批量生成时系统会按剧情建 4~8 个，宁多勿缺。
+4. **写第一章**：先生成草稿，看主AI给的走向是否具体；不满意就带意见重写。
+5. **范例库（可选但推荐）**：把你看过的好片段按「一个完整事件」粘进已整理案例；整本小说先丢素材库，有空再 AI 划分。
+6. **故事档案 / 笔记库**：写到十几章后，用「AI 整理」清理知识库与笔记库索引，主AI会更稳。
+
+---
+
+## API 配置说明
+
+- 支持任意 OpenAI 兼容的 `/chat/completions` 接口，默认走流式。
+- 「用途分工」可为主AI决断 / 正文写作 / 角色推理 / 审查 / 去AI味 / 拆书 / 文风校对 / 对话 / 事件划分分别指定配置。
+- 「思考强度」按环节设置；JSON 类环节建议关闭或低，能显著提速。
+- 慢模型（本地大模型、部分中转站）请把「单次请求超时」调大——它是**两次收到数据之间的最大间隔**，不是总时长。
+
+---
+
+## 从源码构建
+
+```bash
+# PC（Windows）
+cd 星火笔
+pip install -r requirements.txt
+python src/main.py        # 或双击 start.bat
+
+# Android（Android Studio / Gradle）
+cd 星火笔-android
+# 自建 keystore 后 ./gradlew assembleRelease
+# Chaquopy 预编译 Python；minSdk 24 / targetSdk 34
+```
+
+仓库结构：
+
+```
+星火笔/              PC 端（PySide6 + Python）
+  src/               引擎、提示词、GUI
+  assets/            图标与主题资源
+星火笔-android/      安卓端（WebView + Chaquopy，Python 与 PC 同源）
+  app/src/main/python/
+  app/src/main/assets/www/
+```
+
+---
+
+## 数据与隐私
+
+- 项目、章节、角色卡、伏笔、拆书文档、预设与 API Key **全部存本机 / App 私有目录**。
+- 本仓库的发布包均为**无痕版本**：不含用户项目、用户配置、API Key、签名密钥。
+- 联网搜索只在主动使用时发生；搜索源受限时不会把摘要硬塞给正文AI。
+
+---
+
+## 已知限制 / 说明
+
+- **联网找范例**：目前用免费搜索源，常只能拿到站点目录/短摘要，抓不到小说正文时宁可不注入；后续可换搜索 API。
+- **慢模型**：长章生成可能撞中转站网关超时（如 524），这不是客户端超时；建议换更快模型或缩短目标字数。
+- **字数控制**：目标字数只是提示；要硬性上下限请在设置里填「正文上下限字数」，两者写反会被自动交换。
+- **AI 产出**：请自行校对与把关；本工具不保证事实、逻辑或版权合规。
+
+---
+
+## 常见问题
+
+**Q：没有内置范例能用吗？**  
+可以。范例库是加分项；不注入范例也能写，只是复杂事件（对决/突破/谈判）可能不够具体。
+
+**Q：整本小说丢进去为什么不能直接写？**  
+整本进的是「素材库（未整理）」，不参与写章；要先「划分素材」切成完整事件并确认。
+
+**Q：主AI知识库/笔记库会不会越写越长？**  
+知识库只收长期设定并自动去重限长；笔记库每 N 章整份重写、删除已完结条目。存量可在界面点「AI 整理」。
+
+**Q：能不能只用本地模型？**  
+可以，LM Studio / llama.cpp 的 OpenAI 兼容接口即可；把超时调大、思考强度按环节设置。
+
+---
+
+## 许可与免责
+
+个人开发作品，开源仅供学习交流；产出小说版权归创作者本人；不附带担保，仓库许可证由发布者决定。
+
+A personal project, open-sourced for learning and communication. Novels you produce belong to you.
+No warranty is provided; the repository license is decided by the publisher.
+
+---
+
+> 开发者是中国人，源码/注释/界面以中文为主。需要英文版建议用 AI 辅助自行修改；
+> 欢迎改、欢迎扩展，也欢迎把改好的版本分享回来。
+> The developer is Chinese; source, comments and UI are primarily in Chinese. If you need an English
+> version, feel free to modify it with AI-assisted editing — you are welcome to change, improve,
+> extend any feature, and share it back.
