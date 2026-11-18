@@ -1,0 +1,43 @@
+# -*- coding: utf-8 -*-
+"""打包星火笔 v1.69（码字 AI 任务上下文可配置·补齐：用途分工「码字AI」单独选 API +
+码字页/段落工具对话框三开关可见可调 + 续写/段落工具读 write_tool profile。
+含 data/config.json + data/breaks + data/style_extract。）"""
+import os
+import zipfile
+
+ROOT = r"F:\download\work file\novel\星火笔"
+OUT = r"F:\download\work file\novel\历史版本-电脑端\星火笔-v1.69(码字AI分工与上下文开关).zip"
+
+EXCLUDE_DIRS = {".git", "data", "projects", "__pycache__"}
+EXCLUDE_FILES = {"e2e.log", "release.keystore", "keystore.properties"}
+KEEP_DATA_SUBDIRS = ("breaks", "style_extract")
+
+files = []
+for dirpath, dirnames, filenames in os.walk(ROOT):
+    base = os.path.basename(dirpath)
+    if base == "data":
+        dirnames[:] = [d for d in dirnames if d in KEEP_DATA_SUBDIRS]
+    else:
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS or d == "data"]
+    for fn in filenames:
+        if fn in EXCLUDE_FILES:
+            continue
+        full = os.path.join(dirpath, fn)
+        rel = os.path.relpath(full, ROOT)
+        if rel.startswith("data" + os.sep):
+            parts = rel.split(os.sep)[1:]
+            if parts and parts[0] in KEEP_DATA_SUBDIRS:
+                files.append((full, rel))
+            continue
+        files.append((full, rel))
+
+cfg = os.path.join(ROOT, "data", "config.json")
+if os.path.isfile(cfg):
+    files.append((cfg, "data/config.json"))
+else:
+    print("WARN data/config.json 不存在，本次不打包")
+
+with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
+    for full, rel in sorted(files):
+        z.write(full, "星火笔/" + rel)
+print("ZIP_OK", len(files), "files ->", OUT)
